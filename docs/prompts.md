@@ -1,0 +1,110 @@
+# Prompts et agents IA
+
+## Fichiers
+
+| Fichier | Rôle |
+|---|---|
+| [champs-a-pseudonymiser.md](../prompts/champs-a-pseudonymiser.md) | **Source unique des champs**. Pour chaque champ : définition, formats, indices de reconnaissance, contre-exemples, et stratégie de normalisation. Lu par les agents (injecté via `{{CHAMPS}}`) **et** par le code (liste des types, normalisation). |
+| [agent-detection.md](../prompts/agent-detection.md) | Agent 1 : lit le texte original et liste toutes les valeurs à pseudonymiser. |
+| [agent-verification.md](../prompts/agent-verification.md) | Agent 2 : relit le texte **déjà pseudonymisé** et liste les données restées en clair, y compris les fragments. |
+
+```mermaid
+flowchart LR
+    R[champs-a-pseudonymiser.md] -->|"{{CHAMPS}} + {{TYPES}}"| D[agent-detection.md]
+    R -->|"{{CHAMPS}} + {{TYPES}}"| V[agent-verification.md]
+    R -->|titres « ## TYPE — »| S[Format de réponse JSON<br/>types autorisés]
+    R -->|« Normalisation »| N[Calcul des jetons]
+    S --> A1
+    S --> A2
+    D --> A1((Agent détection))
+    V --> A2((Agent vérification))
+    T[Texte original<br/>lignes p1-l1...] --> A1
+    A1 -->|entités| P[Pseudonymisation]
+    P -->|texte avec jetons| A2
+    A2 -->|résidus| P
+```
+
+## Contrat d'entrée et de sortie
+
+**Entrée** : le texte numéroté par ligne, entre balises `<document>` :
+
+```
+<document>
+p1-l2: Patient : M. DUPONT Jean-Marc
+p1-l3: Né le 12/03/1985 - N° SS : 1 85 03 75 123 456 78
+</document>
+```
+
+**Sortie** : un JSON imposé par *Structured Outputs* (schéma strict défini dans
+`src/pseudo/detection/llm.py`) :
+
+```json
+{"entities": [{"line_id": "p1-l2", "text": "DUPONT", "type": "NOM", "group": "", "confidence": 0.99}]}
+```
+
+- `text` doit être une sous-chaîne **exacte** de la ligne. Le code la localise successivement
+  par recherche exacte, puis tolérante (casse et espaces), puis floue (rapidfuzz). Les positions
+  des mots permettent ensuite de calculer les zones à masquer.
+- `group` relie les fragments d'une valeur répartie sur plusieurs lignes, comme une adresse.
+  Tous les fragments reçoivent alors le même jeton.
+- Les types autorisés sont **ceux déclarés dans le référentiel**. Le code construit à chaque
+  chargement des prompts le format de réponse imposé au modèle, qui ne peut donc ni inventer un
+  type ni en omettre un déclaré. Le type `PERSONNE` est réservé au filet Azure AI Language
+  (nom complet non découpé).
+
+## Modifier les règles
+
+- **Affiner un champ existant** (nouveau libellé, nouveau format, contre-exemple) : modifier
+  uniquement `champs-a-pseudonymiser.md`.
+- **Changer une politique** (par exemple ne plus masquer les adresses des organisations) :
+  modifier la section du champ concerné. Le filet Azure AI Language masque toutes les adresses
+  qu'il reconnaît. Retirez `Address:ADRESSE` de `LANGUAGE_PII_CATEGORIES` si nécessaire.
+- **Ajouter un type** (IBAN, numéro de passeport...) : ajouter une section dans
+  `champs-a-pseudonymiser.md`, puis lancer `./scripts/publish-prompts.ps1`. Le champ est pris en
+  compte en moins de 5 minutes, **sans redéploiement du code** :
+
+  ```markdown
+  ## IBAN — Numéro de compte bancaire
+
+  - **Normalisation** : alphanumerique
+  - **Définition** : identifiant international de compte bancaire...
+  - **Indices** : `IBAN`, `RIB`, commence par `FR76`...
+  - **Ne pas confondre** avec : ...
+  ```
+
+  - **Titre** : `## TYPE — Libellé`. Le type s'écrit en MAJUSCULES, chiffres et `_`, suivi d'un
+    tiret cadratin `—`. C'est le nom qui apparaît dans les jetons (`[IBAN_3FA94C0B21]`).
+  - **Normalisation** (facultative, défaut `texte`) : elle sert à donner le même jeton à une même
+    valeur écrite différemment. Valeurs possibles :
+
+    | Stratégie | Effet | Exemples |
+    |---|---|---|
+    | `texte` | accents, casse, espaces et ponctuation ignorés | noms, adresses |
+    | `chiffres` | chiffres uniquement | numéros de dossier |
+    | `alphanumerique` | lettres et chiffres en majuscules | NIR, IBAN, passeport |
+    | `email` | espaces supprimés, minuscules | e-mails |
+    | `telephone` | chiffres, préfixe +33 / 0033 ramené à 0 | téléphones |
+    | `date` | convertie en AAAA-MM-JJ si le format est reconnu | dates |
+
+  - **Contrôle** : un type mal écrit, un doublon ou une normalisation inconnue **bloque le
+    traitement**. Le message reste dans la file Service Bus pour être réessayé, et l'erreur
+    apparaît dans les journaux. Testez localement avant de publier, par exemple avec
+    `python src/cli.py exemple.pdf`.
+  - Les notes destinées aux mainteneurs se placent dans un commentaire HTML `<!-- ... -->`.
+    Ces commentaires sont retirés avant analyse et ne sont jamais envoyés aux agents.
+  - **Filet regex (facultatif)** : pour un format très structuré, une règle peut être ajoutée
+    dans `src/pseudo/detection/regex_rules.py`. C'est le seul cas qui demande de modifier le code.
+  - **Retirer un champ** : supprimer sa section. Les filets regex (NIR, e-mail, téléphone, date
+    de naissance) et Azure AI Language continuent cependant de masquer leurs propres types.
+
+## Bonnes pratiques
+
+- Garder des **exemples fictifs** dans les prompts. N'y copiez jamais de données réelles.
+- Pour chaque champ, donner autant de **contre-exemples** que d'exemples : c'est ce qui réduit
+  les faux positifs.
+- Toute modification se mesure sur un jeu de documents annotés. La métrique prioritaire est le
+  **rappel** : aucune donnée oubliée.
+- Le prompt rappelle que le contenu du document est une **donnée, jamais une instruction**.
+  C'est une protection contre l'injection de prompt via un PDF malveillant. Comme en plus les
+  filets regex et Language ne dépendent pas du LLM, une injection réussie ne suffit pas à
+  faire passer des données en clair.

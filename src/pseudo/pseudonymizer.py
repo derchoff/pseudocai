@@ -1,0 +1,113 @@
+"""Génération des jetons (HMAC déterministe) et chiffrement des valeurs d'origine (AES-GCM)."""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import os
+import re
+import unicodedata
+from dataclasses import dataclass
+
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+from .fields import BUILTIN_STRATEGIES, DEFAULT_STRATEGY
+
+_MONTHS = {
+    "janv": 1, "janvier": 1, "fev": 2, "fevrier": 2, "mars": 3, "avr": 4, "avril": 4, "mai": 5,
+    "juin": 6, "juil": 7, "juillet": 7, "aout": 8, "sept": 9, "septembre": 9, "oct": 10,
+    "octobre": 10, "nov": 11, "novembre": 11, "dec": 12, "decembre": 12,
+}
+
+
+def _strip_accents(value: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFKD", value) if not unicodedata.combining(c))
+
+
+def normalize(strategy: str, value: str) -> str:
+    """Forme canonique selon la stratégie du champ : une même donnée écrite différemment
+    (espaces, ponctuation, casse, format de date...) produit le même jeton."""
+    v = value.strip()
+    if strategy == "telephone":
+        digits = re.sub(r"\D", "", v.replace("(0)", ""))
+        if digits.startswith("0033"):
+            digits = "0" + digits[4:]
+        elif digits.startswith("33") and len(digits) == 11:
+            digits = "0" + digits[2:]
+        return digits
+    if strategy == "chiffres":
+        return re.sub(r"\D", "", v)
+    if strategy == "alphanumerique":
+        return re.sub(r"[^0-9A-Z]", "", _strip_accents(v).upper())
+    if strategy == "email":
+        return re.sub(r"\s+", "", v).lower()
+    if strategy == "date":
+        iso = _normalize_date(v)
+        if iso:
+            return iso
+    folded = _strip_accents(v).casefold()
+    folded = re.sub(r"[\s\-'’.,]+", " ", folded)
+    return folded.strip()
+
+
+def _normalize_date(value: str) -> str | None:
+    v = _strip_accents(value).lower().replace("1er", "1")
+    m = re.fullmatch(r"(\d{1,2})\s?[/.\-]\s?(\d{1,2})\s?[/.\-]\s?(\d{2}|\d{4})", v)
+    if m:
+        d, mo, y = int(m.group(1)), int(m.group(2)), m.group(3)
+        return f"{y if len(y) == 4 else 'xx' + y}-{mo:02d}-{d:02d}"
+    m = re.fullmatch(r"(\d{1,2})\s+([a-z]+)\.?\s+(\d{4})", v)
+    if m and m.group(2) in _MONTHS:
+        return f"{m.group(3)}-{_MONTHS[m.group(2)]:02d}-{int(m.group(1)):02d}"
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", v)
+    if m:
+        return v
+    return None
+
+
+class Pseudonymizer:
+    def __init__(self, hmac_key: bytes, token_length: int = 10):
+        if len(hmac_key) < 32:
+            raise ValueError("La clé HMAC doit faire au moins 256 bits")
+        self._key = hmac_key
+        self._length = token_length
+
+    def fingerprint(self, entity_type: str, value: str, strategy: str | None = None) -> str:
+        strategy = strategy or BUILTIN_STRATEGIES.get(entity_type, DEFAULT_STRATEGY)
+        message = f"{entity_type}|{normalize(strategy, value)}".encode("utf-8")
+        return hmac.new(self._key, message, hashlib.sha256).hexdigest()
+
+    def token(self, entity_type: str, value: str, strategy: str | None = None) -> str:
+        fingerprint = self.fingerprint(entity_type, value, strategy)
+        return f"[{entity_type}_{fingerprint[: self._length].upper()}]"
+
+
+class ValueCipher:
+    """Chiffre la valeur d'origine ; le jeton sert de données associées (AAD)."""
+
+    def __init__(self, key: bytes):
+        if len(key) != 32:
+            raise ValueError("La clé de chiffrement doit faire 256 bits")
+        self._aes = AESGCM(key)
+
+    def encrypt(self, token: str, value: str) -> str:
+        nonce = os.urandom(12)
+        ciphertext = self._aes.encrypt(nonce, value.encode("utf-8"), token.encode("utf-8"))
+        return base64.b64encode(nonce + ciphertext).decode("ascii")
+
+    def decrypt(self, token: str, payload: str) -> str:
+        raw = base64.b64decode(payload)
+        return self._aes.decrypt(raw[:12], raw[12:], token.encode("utf-8")).decode("utf-8")
+
+
+@dataclass
+class MappingRecord:
+    token: str
+    type: str
+    fingerprint: str
+    ciphertext: str
+
+    @property
+    def id(self) -> str:
+        return self.token.strip("[]")

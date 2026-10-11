@@ -1,0 +1,180 @@
+# ---------------------------------------------------------------------------- Contexte
+
+variable "subscription_id" {
+  description = "Abonnement Azure cible."
+  type        = string
+}
+
+variable "project" {
+  description = "Nom court du projet (minuscules/chiffres, 2 à 8 caractères), utilisé dans les noms de ressources."
+  type        = string
+  default     = "pseudo"
+
+  validation {
+    condition     = can(regex("^[a-z0-9]{2,8}$", var.project))
+    error_message = "project : 2 à 8 caractères minuscules ou chiffres."
+  }
+}
+
+variable "environment" {
+  description = "Environnement (dev, rec, prod...)."
+  type        = string
+  default     = "dev"
+
+  validation {
+    condition     = can(regex("^[a-z0-9]{2,4}$", var.environment))
+    error_message = "environment : 2 à 4 caractères minuscules ou chiffres."
+  }
+}
+
+variable "location" {
+  description = "Région principale des ressources."
+  type        = string
+  default     = "francecentral"
+}
+
+variable "tags" {
+  description = "Tags appliqués à toutes les ressources."
+  type        = map(string)
+  default     = {}
+}
+
+# ---------------------------------------------------------------------------- Réseau
+
+variable "enable_private_networking" {
+  description = "Active VNet, private endpoints et désactive les accès publics (Service Bus passe en Premium)."
+  type        = bool
+  default     = false
+}
+
+variable "vnet_address_space" {
+  description = "Plage d'adresses du VNet (si enable_private_networking)."
+  type        = string
+  default     = "10.40.0.0/24"
+}
+
+variable "allowed_ip_ranges" {
+  description = "IP/CIDR publiques autorisées (poste de déploiement, runner CI) quand le réseau privé est activé."
+  type        = list(string)
+  default     = []
+}
+
+# ---------------------------------------------------------------------------- IA
+
+variable "openai_location" {
+  description = "Région du compte Azure OpenAI (disponibilité des modèles ; rester dans l'UE)."
+  type        = string
+  default     = "swedencentral"
+}
+
+variable "openai_model_name" {
+  description = "Modèle Azure OpenAI utilisé par les agents (doit supporter les Structured Outputs)."
+  type        = string
+  default     = "gpt-5-mini"
+}
+
+variable "openai_model_version" {
+  description = "Version du modèle."
+  type        = string
+  default     = "2025-08-07"
+}
+
+variable "openai_deployment_sku" {
+  description = "Type de déploiement : DataZoneStandard (données traitées dans l'UE), Standard, GlobalStandard..."
+  type        = string
+  default     = "DataZoneStandard"
+}
+
+variable "openai_capacity" {
+  description = "Capacité du déploiement en milliers de tokens/minute."
+  type        = number
+  default     = 100
+}
+
+variable "openai_api_version" {
+  description = "Version d'API Azure OpenAI utilisée par le code."
+  type        = string
+  default     = "2025-04-01-preview"
+}
+
+variable "openai_reasoning_effort" {
+  description = "Effort de raisonnement (modèles de raisonnement) : minimal, low, medium, high. Vide pour ne pas l'envoyer."
+  type        = string
+  default     = "low"
+}
+
+variable "enable_language_pii" {
+  description = "Déploie Azure AI Language et l'utilise comme filet de sécurité PII."
+  type        = bool
+  default     = true
+}
+
+# ---------------------------------------------------------------------------- Traitement
+
+variable "function_max_instances" {
+  description = "Nombre max d'instances Flex Consumption (limite aussi la charge sur Azure OpenAI)."
+  type        = number
+  default     = 10
+}
+
+variable "function_instance_memory_mb" {
+  description = "Mémoire par instance (2048 ou 4096 recommandé pour les gros PDF scannés)."
+  type        = number
+  default     = 2048
+}
+
+variable "servicebus_max_delivery_count" {
+  description = "Nombre de tentatives avant dead-letter."
+  type        = number
+  default     = 5
+}
+
+variable "delete_source_after_success" {
+  description = "Supprime le PDF d'entrée après traitement (succès ou quarantaine)."
+  type        = bool
+  default     = false
+}
+
+variable "incoming_retention_days" {
+  description = "Suppression automatique des fichiers d'entrée après N jours."
+  type        = number
+  default     = 7
+}
+
+variable "quarantine_retention_days" {
+  description = "Suppression automatique des fichiers en quarantaine après N jours."
+  type        = number
+  default     = 30
+}
+
+variable "pipeline_settings" {
+  description = "Paramètres additionnels du pipeline (app settings), ex. { MAX_PAGES = \"300\", FORCE_OCR = \"false\" }."
+  type        = map(string)
+  default     = {}
+}
+
+# ---------------------------------------------------------------------------- Sécurité
+
+variable "key_vault_purge_protection" {
+  description = "Protection contre la purge du Key Vault (recommandé en prod ; irréversible)."
+  type        = bool
+  default     = true
+}
+
+variable "grant_deployer_data_access" {
+  description = "Donne à l'identité qui exécute Terraform l'accès aux données (dépôt des prompts, tests)."
+  type        = bool
+  default     = true
+}
+
+variable "reidentification_principal_ids" {
+  description = "Object IDs Entra (groupe recommandé) autorisés à ré-identifier les jetons."
+  type        = list(string)
+  default     = []
+}
+
+variable "log_retention_days" {
+  description = "Rétention Log Analytics."
+  type        = number
+  default     = 90
+}

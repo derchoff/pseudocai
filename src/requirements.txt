@@ -1,0 +1,11 @@
+azure-functions>=1.21
+azure-identity>=1.19
+azure-storage-blob>=12.24
+azure-keyvault-secrets>=4.9
+azure-cosmos>=4.9
+azure-ai-documentintelligence>=1.0.0
+azure-ai-textanalytics>=5.3
+openai>=1.68
+pymupdf>=1.25
+rapidfuzz>=3.10
+cryptography>=44.0

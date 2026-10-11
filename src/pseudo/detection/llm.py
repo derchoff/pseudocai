@@ -1,0 +1,192 @@
+"""Agents IA (Azure OpenAI) : détection initiale et contrôle qualité du texte pseudonymisé."""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Callable, Iterable
+
+from ..models import Entity, Line
+from ..prompts import RenderedPrompt
+
+log = logging.getLogger(__name__)
+
+def entities_schema(types: tuple[str, ...]) -> dict:
+    """Schéma JSON strict imposé au modèle ; la liste des types vient du référentiel Markdown."""
+    return {
+        "type": "object",
+        "properties": {
+            "entities": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "line_id": {"type": "string"},
+                        "text": {"type": "string"},
+                        "type": {"type": "string", "enum": list(types)},
+                        "group": {"type": "string"},
+                        "confidence": {"type": "number"},
+                    },
+                    "required": ["line_id", "text", "type", "group", "confidence"],
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["entities"],
+        "additionalProperties": False,
+    }
+
+
+class LlmError(RuntimeError):
+    pass
+
+
+class AzureOpenAIJsonAgent:
+    """Appel Chat Completions en Structured Outputs (schéma JSON strict)."""
+
+    def __init__(
+        self,
+        client,
+        deployment: str,
+        *,
+        reasoning_effort: str | None = None,
+        temperature: float | None = None,
+        max_completion_tokens: int = 16000,
+    ):
+        self._client = client
+        self._deployment = deployment
+        self._reasoning_effort = reasoning_effort
+        self._temperature = temperature
+        self._max_tokens = max_completion_tokens
+
+    def run(self, system_prompt: str, user_content: str, schema: dict, schema_name: str = "entities") -> dict:
+        kwargs: dict = {
+            "model": self._deployment,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": schema_name, "strict": True, "schema": schema},
+            },
+            "max_completion_tokens": self._max_tokens,
+        }
+        if self._reasoning_effort:
+            kwargs["reasoning_effort"] = self._reasoning_effort
+        if self._temperature is not None:
+            kwargs["temperature"] = self._temperature
+        response = self._client.chat.completions.create(**kwargs)
+        choice = response.choices[0]
+        if getattr(choice.message, "refusal", None):
+            raise LlmError("Le modèle a refusé la requête")
+        if choice.finish_reason == "length":
+            raise LlmError("Réponse tronquée (max_completion_tokens) : réduire LLM_CHUNK_CHARS")
+        return json.loads(choice.message.content or "{}")
+
+
+def format_lines(lines: Iterable[tuple[str, str]]) -> str:
+    body = "\n".join(f"{line_id}: {text}" for line_id, text in lines)
+    return f"<document>\n{body}\n</document>"
+
+
+def chunk_lines(lines: list[tuple[str, str]], max_chars: int, overlap: int) -> list[list[tuple[str, str]]]:
+    """Découpe en blocs d'au plus max_chars, avec quelques lignes de recouvrement."""
+    chunks: list[list[tuple[str, str]]] = []
+    current: list[tuple[str, str]] = []
+    size = 0
+    for item in lines:
+        item_size = len(item[0]) + len(item[1]) + 3
+        if current and size + item_size > max_chars:
+            chunks.append(current)
+            current = current[-overlap:] if overlap > 0 else []
+            size = sum(len(a) + len(b) + 3 for a, b in current)
+        current.append(item)
+        size += item_size
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+class EntityAgent:
+    """Agent générique : envoie des lignes (id, texte) et récupère des entités."""
+
+    def __init__(
+        self,
+        llm: AzureOpenAIJsonAgent,
+        prompt_provider: Callable[[], RenderedPrompt],
+        *,
+        source: str,
+        chunk_chars: int,
+        overlap_lines: int,
+        min_confidence: float,
+    ):
+        self._llm = llm
+        self._prompt_provider = prompt_provider
+        self._source = source
+        self._chunk_chars = chunk_chars
+        self._overlap = overlap_lines
+        self._min_confidence = min_confidence
+        self.last_prompt_sha256: str | None = None
+
+    def run(self, lines: list[tuple[str, str]]) -> list[Entity]:
+        if not lines:
+            return []
+        prompt = self._prompt_provider()
+        self.last_prompt_sha256 = prompt.sha256
+        allowed_types = prompt.catalog.types
+        schema = entities_schema(allowed_types)
+        known_ids = {line_id for line_id, _ in lines}
+        entities: list[Entity] = []
+        for n, chunk in enumerate(chunk_lines(lines, self._chunk_chars, self._overlap)):
+            data = self._llm.run(prompt.text, format_lines(chunk), schema)
+            for raw in data.get("entities", []):
+                text = (raw.get("text") or "").strip()
+                etype = raw.get("type")
+                if not text:
+                    continue
+                if etype not in allowed_types:
+                    # Impossible avec un schéma strict ; journalisé si cela se produisait malgré tout.
+                    log.warning("Type inconnu renvoyé par l'agent %s : %s", self._source, etype)
+                    continue
+                confidence = float(raw.get("confidence", 1.0))
+                if confidence < self._min_confidence:
+                    continue
+                line_id = raw.get("line_id", "")
+                group = raw.get("group") or ""
+                entities.append(
+                    Entity(
+                        line_id=line_id if line_id in known_ids else "",
+                        text=text,
+                        type=etype,
+                        group=f"c{n}-{group}" if group else "",
+                        confidence=confidence,
+                        source=self._source,
+                    )
+                )
+        log.info("Agent %s : %d entité(s) sur %d ligne(s)", self._source, len(entities), len(lines))
+        return entities
+
+
+class DetectionAgent:
+    def __init__(self, agent: EntityAgent):
+        self._agent = agent
+
+    @property
+    def prompt_sha256(self) -> str | None:
+        return self._agent.last_prompt_sha256
+
+    def detect(self, lines: list[Line]) -> list[Entity]:
+        return self._agent.run([(line.id, line.text) for line in lines if line.text.strip()])
+
+
+class VerificationAgent:
+    def __init__(self, agent: EntityAgent):
+        self._agent = agent
+
+    @property
+    def prompt_sha256(self) -> str | None:
+        return self._agent.last_prompt_sha256
+
+    def verify(self, pseudonymised_lines: list[tuple[str, str]]) -> list[Entity]:
+        return self._agent.run([item for item in pseudonymised_lines if item[1].strip()])

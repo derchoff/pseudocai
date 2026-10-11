@@ -1,0 +1,6 @@
+# terraform init -backend-config=backend.hcl
+resource_group_name  = "rg-tfstate"
+storage_account_name = "sttfstate20261011"
+container_name       = "tfstate"
+key                  = "pseudonymisation/dev.tfstate"
+use_azuread_auth     = true

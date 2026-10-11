@@ -1,0 +1,19 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "ServiceBusConnection__fullyQualifiedNamespace": "<namespace>.servicebus.windows.net",
+    "SERVICEBUS_QUEUE_NAME": "pdf-events",
+
+    "STORAGE_ACCOUNT_URL": "https://<stdata>.blob.core.windows.net",
+    "DOCINTEL_ENDPOINT": "https://<docintel>.cognitiveservices.azure.com/",
+    "OPENAI_ENDPOINT": "https://<openai>.openai.azure.com/",
+    "OPENAI_DEPLOYMENT": "pseudo-llm",
+    "OPENAI_API_VERSION": "2025-04-01-preview",
+    "OPENAI_REASONING_EFFORT": "low",
+    "LANGUAGE_ENDPOINT": "https://<language>.cognitiveservices.azure.com/",
+    "KEY_VAULT_URL": "https://<kv>.vault.azure.net/",
+    "COSMOS_ENDPOINT": "https://<cosmos>.documents.azure.com:443/"
+  }
+}

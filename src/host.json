@@ -1,0 +1,26 @@
+{
+  "version": "2.0",
+  "functionTimeout": "00:30:00",
+  "logging": {
+    "logLevel": {
+      "default": "Information",
+      "Azure.Core": "Warning",
+      "Azure.Identity": "Warning"
+    },
+    "applicationInsights": {
+      "samplingSettings": { "isEnabled": false }
+    }
+  },
+  "extensionBundle": {
+    "id": "Microsoft.Azure.Functions.ExtensionBundle",
+    "version": "[4.*, 5.0.0)"
+  },
+  "extensions": {
+    "serviceBus": {
+      "prefetchCount": 0,
+      "maxConcurrentCalls": 4,
+      "autoCompleteMessages": true,
+      "maxAutoLockRenewalDuration": "00:30:00"
+    }
+  }
+}

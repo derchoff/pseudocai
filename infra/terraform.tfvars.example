@@ -1,0 +1,36 @@
+# Copier en terraform.tfvars (ou envs/<env>.tfvars) et adapter.
+subscription_id = "00000000-0000-0000-0000-000000000000"
+project         = "pseudo"
+environment     = "dev"
+location        = "francecentral"
+openai_location = "swedencentral"
+
+# Modèle utilisé par les agents de détection et de vérification
+openai_model_name       = "gpt-5-mini"
+openai_model_version    = "2025-08-07"
+openai_deployment_sku   = "DataZoneStandard"
+openai_capacity         = 100
+openai_reasoning_effort = "low"
+
+enable_language_pii       = true
+enable_private_networking = false
+allowed_ip_ranges         = [] # ex. ["203.0.113.10"] : IP du poste/runner de déploiement
+
+function_max_instances      = 10
+function_instance_memory_mb = 2048
+delete_source_after_success = false
+incoming_retention_days     = 7
+quarantine_retention_days   = 30
+
+# Groupe Entra autorisé à ré-identifier les jetons (reidentify.py)
+reidentification_principal_ids = []
+
+pipeline_settings = {
+  MAX_PAGES           = "200"
+  VERIFICATION_ROUNDS = "2"
+  OCR_MIN_CONFIDENCE  = "0.75"
+}
+
+tags = {
+  owner = "equipe-data"
+}
