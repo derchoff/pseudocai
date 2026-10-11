@@ -82,6 +82,13 @@ class Settings:
     quarantine_on_unlocated: bool
     prompt_cache_seconds: int
 
+    # Classification du type de document
+    classification_enabled: bool
+    classification_min_confidence: float
+    classification_secondary_min_confidence: float
+    classification_max_chars: int
+    unclassified_folder: str
+
     @classmethod
     def from_env(cls) -> "Settings":
         temperature = _env("OPENAI_TEMPERATURE")
@@ -134,4 +141,9 @@ class Settings:
             fuzzy_min_score=_float("FUZZY_MIN_SCORE", 85.0),
             quarantine_on_unlocated=_bool("QUARANTINE_ON_UNLOCATED", True),
             prompt_cache_seconds=_int("PROMPT_CACHE_SECONDS", 300),
+            classification_enabled=_bool("CLASSIFICATION_ENABLED", True),
+            classification_min_confidence=_float("CLASSIFICATION_MIN_CONFIDENCE", 0.6),
+            classification_secondary_min_confidence=_float("CLASSIFICATION_SECONDARY_MIN_CONFIDENCE", 0.3),
+            classification_max_chars=_int("CLASSIFICATION_MAX_CHARS", 6000),
+            unclassified_folder=_env("UNCLASSIFIED_FOLDER", "non-classe"),
         )

@@ -7,6 +7,8 @@
 | [champs-a-pseudonymiser.md](../prompts/champs-a-pseudonymiser.md) | **Source unique des champs**. Pour chaque champ : définition, formats, indices de reconnaissance, contre-exemples, et stratégie de normalisation. Lu par les agents (injecté via `{{CHAMPS}}`) **et** par le code (liste des types, normalisation). |
 | [agent-detection.md](../prompts/agent-detection.md) | Agent 1 : lit le texte original et liste toutes les valeurs à pseudonymiser. |
 | [agent-verification.md](../prompts/agent-verification.md) | Agent 2 : relit le texte **déjà pseudonymisé** et liste les données restées en clair, y compris les fragments. |
+| [types-documents.md](../prompts/types-documents.md) | **Source unique des types de document** : indices de reconnaissance, contre-exemples, sous-dossier de sortie. Lu par l'agent de classification (injecté via `{{TYPES_DOCUMENTS}}`) **et** par le code (types autorisés, dossiers). |
+| [agent-classification.md](../prompts/agent-classification.md) | Agent 3 : lit le début du texte **pseudonymisé** et renvoie le ou les types de document avec une confiance. |
 
 ```mermaid
 flowchart LR
@@ -96,6 +98,63 @@ p1-l3: Né le 12/03/1985 - N° SS : 1 85 03 75 123 456 78
     dans `src/pseudo/detection/regex_rules.py`. C'est le seul cas qui demande de modifier le code.
   - **Retirer un champ** : supprimer sa section. Les filets regex (NIR, e-mail, téléphone, date
     de naissance) et Azure AI Language continuent cependant de masquer leurs propres types.
+
+## Types de document et classification
+
+```mermaid
+flowchart LR
+    TD[types-documents.md] -->|"{{TYPES_DOCUMENTS}} + {{LISTE_TYPES}}"| AC[agent-classification.md]
+    TD -->|titres « ## TYPE — »| SC[Format de réponse JSON<br/>types autorisés + NON_CLASSE]
+    TD -->|« Dossier »| DO[Sous-dossier de sortie]
+    AC --> A3((Agent classification))
+    SC --> A3
+    TP[Texte pseudonymisé<br/>6 000 premiers caractères] --> A3
+    A3 -->|types + confiances + indices| DEC[Décision : seuils]
+    DEC --> DO
+```
+
+**Réponse de l'agent** (format imposé par *Structured Outputs*) :
+
+```json
+{"types": [
+  {"type": "DENTAIRE", "confidence": 0.85, "indices": ["détartrage", "code HBJD001"]},
+  {"type": "OPTIQUE", "confidence": 0.85, "indices": ["monture", "verres unifocaux"]}
+]}
+```
+
+- Les confiances sont **indépendantes**, elles ne totalisent pas forcément 1. Un document mixte
+  reçoit une confiance élevée pour chacun de ses types.
+- `NON_CLASSE` est toujours autorisé : l'agent l'utilise quand aucun type ne convient.
+- Les `indices` ne contiennent que du vocabulaire métier. Le prompt l'impose, et le texte reçu
+  est de toute façon pseudonymisé. Ils sont limités à 5 indices de 80 caractères.
+- La décision (type principal, types secondaires, `multi_type`, `NON_CLASSE`) est prise par le
+  code, avec les seuils décrits dans [architecture.md](architecture.md#classification-du-type-de-document).
+
+**Ajouter un type de document** : ajouter une section dans `types-documents.md`, puis lancer
+`./scripts/publish-prompts.ps1`. Le type est pris en compte en moins de 5 minutes, sans
+redéploiement.
+
+```markdown
+## AUDIOPROTHESE — Audioprothèse
+
+- **Dossier** : audioprothese
+- **Indices** : audioprothésiste, aide auditive, appareil auditif, contour d'oreille, intra-auriculaire,
+  ordonnance d'ORL, classe I / classe II, codes LPP…
+- **Ne pas confondre** : consultation chez un ORL sans délivrance d'appareil.
+```
+
+- **Titre** : `## TYPE — Libellé`. Le type s'écrit en MAJUSCULES, chiffres et `_`, suivi d'un
+  tiret cadratin `—`. `NON_CLASSE` est réservé et ne doit pas être déclaré.
+- **Dossier** (facultatif) : minuscules, chiffres et `-`. Par défaut, c'est le type en
+  minuscules, avec `_` remplacé par `-`. Deux types ne peuvent pas partager un dossier.
+- **Indices** : décrire le type par la **profession**, les **actes**, les **codes de facturation**
+  et le **vocabulaire**, jamais par des noms de personnes, puisque l'agent ne voit que le texte
+  pseudonymisé. Ajouter des « Ne pas confondre » pour les cas proches.
+- **Contrôle** : un type mal écrit, un doublon, un dossier invalide ou partagé bloque le
+  traitement, avec une erreur visible dans les journaux. Comme pour les champs, testez en local
+  avant de publier.
+- **Renommer le dossier d'un type existant** ne déplace pas les fichiers déjà produits. Seuls
+  les nouveaux traitements, et les retraitements, utilisent le nouveau dossier.
 
 ## Bonnes pratiques
 

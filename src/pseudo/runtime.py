@@ -7,7 +7,13 @@ from dataclasses import dataclass
 
 from .config import Settings
 from .detection.language_pii import LanguagePiiDetector, parse_category_map
-from .detection.llm import AzureOpenAIJsonAgent, DetectionAgent, EntityAgent, VerificationAgent
+from .detection.llm import (
+    AzureOpenAIJsonAgent,
+    ClassificationAgent,
+    DetectionAgent,
+    EntityAgent,
+    VerificationAgent,
+)
 from .extraction import DocumentIntelligenceOcr
 from .mapping_store import CosmosMappingStore, MappingStore, NullMappingStore
 from .pipeline import Services
@@ -73,9 +79,11 @@ def build_runtime(
             settings.prompt_cache_seconds,
         )
     prompts = PromptRepository(source)
-    # Échec immédiat (et visible dans les journaux) si le référentiel des champs est invalide.
+    # Échec immédiat (et visible dans les journaux) si un référentiel Markdown est invalide.
     prompts.detection()
     prompts.verification()
+    if settings.classification_enabled:
+        prompts.classification()
 
     # Azure OpenAI ----------------------------------------------------------------------------
     from azure.identity import get_bearer_token_provider
@@ -109,6 +117,12 @@ def build_runtime(
         else None
     )
 
+    classifier = (
+        ClassificationAgent(llm, prompts.classification, max_chars=settings.classification_max_chars)
+        if settings.classification_enabled
+        else None
+    )
+
     # Document Intelligence (OCR des pages scannées) -----------------------------------------
     ocr = None
     if settings.docintel_endpoint:
@@ -138,6 +152,7 @@ def build_runtime(
         pseudonymizer=Pseudonymizer(hmac_key, settings.token_length),
         cipher=ValueCipher(enc_key),
         fields=prompts.catalog,
+        classifier=classifier,
     )
 
     if mapping_store is None:

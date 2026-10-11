@@ -15,7 +15,8 @@ Storage (incoming/) ─► Event Grid ─► Service Bus ─► Azure Function (
                                                      ├─ Agent IA de détection    (Azure OpenAI + prompt)
                                                      ├─ Filets : regex + Azure AI Language
                                                      ├─ Agent IA de vérification (Azure OpenAI + prompt)
-                                                     └─ Caviardage PDF ─► pseudonymised/ | quarantine/
+                                                     ├─ Agent IA de classification (type de document)
+                                                     └─ Caviardage PDF ─► pseudonymised/<type>/ | quarantine/<type>/
 ```
 
 Périmètre actuel : **PDF uniquement**, qu'ils soient natifs ou scannés. Toutes les pages
@@ -23,16 +24,22 @@ passent par l'OCR, pour détecter aussi le texte contenu dans les images (logo d
 tampon d'un artisan...). Les photos de
 smartphone seront traitées dans une seconde phase (voir [architecture](docs/architecture.md#évolutions)).
 
+Chaque document est aussi **classé par type** (dentaire, optique, kinésithérapie, psychologie…)
+et rangé dans le sous-dossier correspondant, y compris en quarantaine. Les types se déclarent
+dans [prompts/types-documents.md](prompts/types-documents.md), sans redéploiement (voir
+[architecture](docs/architecture.md#classification-du-type-de-document)).
+
 ## Arborescence
 
 | Dossier | Contenu |
 |---|---|
 | [docs/](docs/) | [Architecture](docs/architecture.md) (diagrammes Mermaid), [déploiement](docs/deploiement.md), [exploitation](docs/exploitation.md), [prompts](docs/prompts.md) |
-| [prompts/](prompts/) | Référentiel des champs et prompts des deux agents IA |
+| [prompts/](prompts/) | Référentiels des champs et des types de document, prompts des trois agents IA |
 | [infra/](infra/) | Terraform (azurerm 5.x) |
 | [src/](src/) | Azure Function Python + package `pseudo` + outils `cli.py` / `reidentify.py` |
 | [tests/](tests/) | Tests unitaires et de bout en bout (sans appel Azure) |
 | [scripts/](scripts/) | Déploiement PowerShell |
+| [exemples/](exemples/) | Factures fictives de test (dentiste, opticien, psychologue, kiné, version scannée) et leur générateur |
 
 ## Démarrage rapide
 

@@ -24,18 +24,20 @@ flowchart LR
         F3 --> F4[4. Filets de sécurité<br/>regex + Language]
         F4 --> F5[5. Jetons HMAC]
         F5 --> F6[6. Agent de vérification]
-        F6 --> F7[7. Caviardage PDF]
+        F6 --> F8[7. Agent de classification<br/>type de document]
+        F8 --> F7[8. Caviardage PDF<br/>rangement par type]
     end
 
     F2 -.-> DI[Azure AI<br/>Document Intelligence]
     F3 -.-> AOAI[Azure OpenAI<br/>Data Zone EU]
     F6 -.-> AOAI
+    F8 -.-> AOAI
     F4 -.-> LANG[Azure AI Language<br/>PII]
     F -.lit.-> CFG
     F5 -.clés.-> KV[Key Vault<br/>HMAC + AES]
     F -.correspondances chiffrées<br/>+ traces.-> COS[(Cosmos DB<br/>serverless)]
-    F7 --> OUT
-    F7 -- doute --> Q
+    F7 -- "&lt;type&gt;/" --> OUT
+    F7 -- "doute : &lt;type&gt;/" --> Q
     F -.télémétrie sans PII.-> AI[Application Insights<br/>Log Analytics]
 ```
 
@@ -78,13 +80,18 @@ sequenceDiagram
         F->>LLM: agent de vérification (texte pseudonymisé)
         LLM-->>F: résidus éventuels
     end
+    F->>LLM: agent de classification (début du texte pseudonymisé)
+    LLM-->>F: types + confiances + indices
+    F->>F: type principal (seuil) → dossier, sinon non-classe
+    F->>C: dernière trace du document (sorties d'un traitement précédent)
     alt aucun doute
         F->>C: correspondances jeton → valeur chiffrée
-        F->>O: pseudonymised/ : PDF + .txt + rapport
+        F->>O: pseudonymised/{type}/ : PDF + .txt + rapport (+ métadonnées)
     else doute (OCR faible, résidus, entité non localisée, PDF chiffré...)
-        F->>O: quarantine/ : original + motif
+        F->>O: quarantine/{type}/ : original + motif
     end
-    F->>C: trace (statut, compteurs, empreintes des prompts)
+    F->>O: suppression des sorties précédentes devenues obsolètes
+    F->>C: trace (statut, classification, sorties, compteurs, empreintes des prompts)
 ```
 
 ## Pipeline détaillé
@@ -92,7 +99,7 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     A[PDF] --> B{Ouvrable ?<br/>non chiffré ?<br/>≤ MAX_PAGES ?}
-    B -- non --> QZ[[Quarantaine]]
+    B -- non --> QN[[quarantine/non-classe/]]
     B -- oui --> C[bake : formulaires et annotations<br/>deviennent du contenu]
     C --> D{Pour chaque page :<br/>texte ≥ 30 car. et<br/>images < 60 % ?}
     D -- natif --> E1[Couche texte PyMuPDF<br/>positions au caractère]
@@ -109,12 +116,17 @@ flowchart TD
     L --> M[Jetons HMAC-SHA256]
     M --> N[Agent IA de vérification<br/>sur le texte pseudonymisé]
     N -- résidus --> L
-    N -- rien --> O{Doute ?}
-    O -- oui --> QZ
+    N -- rien --> CL[Agent IA de classification<br/>sur le texte pseudonymisé]
+    CL --> CS{Meilleur type<br/>≥ CLASSIFICATION_MIN_CONFIDENCE ?}
+    CS -- oui --> CT[dossier du type<br/>dentaire, optique…]
+    CS -- non --> CU[dossier non-classe]
+    CT & CU --> O{Doute ?}
+    O -- oui --> QZ[[quarantine/&lt;type&gt;/]]
     O -- non --> P[Caviardage]
     P --> P1[Pages natives : suppression réelle du texte<br/>+ effacement des pixels d'images<br/>sous les zones]
     P --> P2[Pages scannées :<br/>re-rastérisation + masquage pixels]
     P1 & P2 --> R[PDF reconstruit sans métadonnées,<br/>pièces jointes ni liens]
+    R --> OK[[pseudonymised/&lt;type&gt;/]]
 ```
 
 ## Choix structurants
@@ -131,8 +143,58 @@ flowchart TD
 | Jetons | `HMAC-SHA256(clé, type + valeur normalisée)` | Une même personne reçoit le même jeton dans tous les documents. Le jeton n'est pas réversible sans la table. |
 | Ré-identification | Valeur chiffrée **AES-256-GCM** dans Cosmos DB, avec le jeton en données associées | La table est séparée des documents et son accès est restreint et tracé (journal d'audit Key Vault). |
 | Doute | **Quarantaine** plutôt que publication | Un faux négatif (fuite) coûte bien plus cher qu'un traitement manuel. |
+| Type de document | **Agent LLM de classification** piloté par `types-documents.md`, appliqué au texte **pseudonymisé** | Pas besoin des données personnelles pour reconnaître une facture dentaire (minimisation RGPD). Un type s'ajoute sans redéployer. Les alternatives (mots-clés, classifieur entraîné Document Intelligence) sont moins robustes ou demandent des documents réels pour l'entraînement. |
+| Rangement | Sous-dossier par type dans `pseudonymised/` **et** `quarantine/` ; métadonnées de blob ; classification complète dans le rapport et la trace Cosmos DB | Consultation simple par dossier, filtrage par programme via les métadonnées, statistiques via Cosmos DB. |
 | Prompts | Stockés dans un Blob versionné, rechargés à chaud (ETag) | Un expert métier peut les faire évoluer sans redéployer le code. |
 | Résidence | OpenAI en déploiement **DataZoneStandard** (UE), autres services en France Central | Conformité RGPD. |
+
+## Classification du type de document
+
+L'agent de classification lit le **début du texte déjà pseudonymisé** (`CLASSIFICATION_MAX_CHARS`,
+6 000 caractères par défaut). Il renvoie une **liste de types**, chacun avec une confiance
+**indépendante** entre 0 et 1 et quelques indices métier. Les confiances ne totalisent pas
+forcément 1 : une facture de centre de santé peut être à la fois DENTAIRE à 0,85 et OPTIQUE à 0,85.
+
+| Notion | Règle |
+|---|---|
+| **Type principal** | Le type de plus forte confiance, s'il atteint `CLASSIFICATION_MIN_CONFIDENCE` (0,6) et dépasse la confiance donnée à `NON_CLASSE`. C'est lui qui détermine le dossier. |
+| **Types secondaires** | Les autres types au-dessus de `CLASSIFICATION_SECONDARY_MIN_CONFIDENCE` (0,3). Ils sont conservés dans le rapport, la trace et les métadonnées, mais ne déterminent pas le dossier. |
+| **`multi_type`** | Vrai si au moins deux types atteignent le seuil principal (document mixte). Le fichier n'est **pas** copié dans plusieurs dossiers. |
+| **`NON_CLASSE`** | Aucun type au-dessus du seuil, réponse « non classable » de l'agent ou erreur d'appel. Le document va dans `non-classe/` (`UNCLASSIFIED_FOLDER`), **sans** quarantaine : une erreur de classement n'expose aucune donnée. |
+
+| Statut (`classification.statut`) | Signification |
+|---|---|
+| `ok` | Un type principal a été retenu. |
+| `non_classe` | L'agent a répondu, mais aucun type n'atteint le seuil. |
+| `erreur` | L'appel à l'agent a échoué. La pseudonymisation n'est pas bloquée. |
+| `non_applicable` | Document rejeté avant extraction (illisible, chiffré, trop volumineux) : dossier `non-classe`. |
+| `desactivee` | `CLASSIFICATION_ENABLED=false` : sorties à la racine des containers, sans sous-dossier. |
+
+Arborescence produite, avec le chemin d'origine conservé sous le dossier du type :
+
+```
+pseudonymised/
+├── dentaire/       <chemin>.pdf · <chemin>.pseudonymise.txt · <chemin>.rapport.json
+├── optique/
+├── kinesitherapie/
+├── psychologie/
+└── non-classe/
+quarantine/
+├── dentaire/       <chemin>.pdf (original) · <chemin>.pdf.motif.json
+├── …
+└── non-classe/     PDF illisibles, chiffrés, trop volumineux, ou de type indéterminé
+```
+
+La classification est conservée à trois endroits :
+- dans le **rapport** ou le **motif** JSON (version complète) ;
+- dans la **trace Cosmos DB** (version complète, plus la liste des sorties écrites) ;
+- dans les **métadonnées de blob** : `document_type`, `document_types`
+  (`DENTAIRE:0.92;OPTIQUE:0.35`) et `classification_statut`.
+
+**Retraitement** : si un document est redéposé et classé différemment, ou s'il passe de la
+quarantaine à la publication (ou l'inverse), les sorties du traitement précédent sont
+retrouvées grâce à la trace Cosmos DB et **supprimées**. Il n'en reste donc jamais deux
+versions dans deux dossiers.
 
 ## Sécurité
 
@@ -166,6 +228,11 @@ flowchart TD
 - Un jeton long dans une zone étroite (prénom court) s'affiche en petits caractères. Le
   fichier `.pseudonymise.txt` contient toujours les jetons complets.
 - Un PDF protégé par mot de passe part en quarantaine.
+- Les confiances de classification sont **estimées par le modèle**, ce ne sont pas des
+  probabilités calibrées. Les seuils (0,6 / 0,3) sont à ajuster sur un échantillon de vrais
+  documents.
+- La classification ne lit que le début du document (6 000 caractères) : un document très long
+  dont la nature n'apparaît qu'à la fin peut être mal classé.
 
 ## Évolutions
 

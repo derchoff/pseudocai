@@ -10,7 +10,17 @@ from typing import Callable, Protocol
 
 import pymupdf
 
+from .catalog import CatalogError
+from .classification import (
+    STATUT_DESACTIVEE,
+    STATUT_ERREUR,
+    STATUT_NON_APPLICABLE,
+    Classification,
+    decide,
+    unclassified,
+)
 from .config import Settings
+from .doctypes import DocTypeCatalog
 from .detection.regex_rules import detect_regex
 from .extraction import OcrEngine, extract_document
 from .fields import FieldCatalog
@@ -43,6 +53,13 @@ class Verifier(Protocol):
         ...
 
 
+class Classifier(Protocol):
+    prompt_sha256: str | None
+
+    def classify(self, pseudonymised_text: str) -> tuple[list[dict], DocTypeCatalog, str]:
+        ...
+
+
 class SpanDetector(Protocol):
     def detect(self, lines: list[Line]) -> list[Span]:
         ...
@@ -58,6 +75,8 @@ class Services:
     language: SpanDetector | None = None
     # Catalogue des champs (référentiel Markdown) : fournit la stratégie de normalisation par type.
     fields: Callable[[], FieldCatalog] | None = None
+    # Agent de classification du type de document (None = classification désactivée).
+    classifier: Classifier | None = None
 
 
 @dataclass
@@ -68,6 +87,7 @@ class PipelineResult:
     text: str | None = None
     records: list[MappingRecord] = field(default_factory=list)
     report: dict = field(default_factory=dict)
+    classification: Classification | None = None
 
 
 def run_pipeline(pdf_bytes: bytes, settings: Settings, services: Services) -> PipelineResult:
@@ -79,13 +99,13 @@ def run_pipeline(pdf_bytes: bytes, settings: Settings, services: Services) -> Pi
     try:
         doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     except Exception:  # noqa: BLE001 - tout PDF illisible part en quarantaine
-        return PipelineResult(status="quarantine", reasons=["pdf_illisible"], report=report)
+        return _rejected("pdf_illisible", report, settings)
     if doc.needs_pass:
-        return PipelineResult(status="quarantine", reasons=["pdf_chiffre"], report=report)
+        return _rejected("pdf_chiffre", report, settings)
     if doc.page_count == 0:
-        return PipelineResult(status="quarantine", reasons=["pdf_vide"], report=report)
+        return _rejected("pdf_vide", report, settings)
     if doc.page_count > settings.max_pages:
-        return PipelineResult(status="quarantine", reasons=["trop_de_pages"], report={"pages": doc.page_count})
+        return _rejected("trop_de_pages", {**report, "pages": doc.page_count}, settings)
     if hasattr(doc, "bake"):
         # Valeurs de formulaires et annotations deviennent du contenu de page : elles sont
         # ainsi extraites, détectées et caviardées comme le reste.
@@ -168,19 +188,59 @@ def run_pipeline(pdf_bytes: bytes, settings: Settings, services: Services) -> Pi
         if settings.quarantine_on_unlocated:
             reasons.append("entites_non_localisees")
 
-    # 5. Rendu --------------------------------------------------------------------------------
     report["entites_par_type"] = dict(Counter(s.type for s in spans))
     report["entites_par_source"] = dict(Counter(s.source for s in spans))
     records = _mapping_records(spans, content, services, catalog)
     report["jetons_distincts"] = len(records)
     text = render_text(content, pseudonymise_document(content, spans))
+
+    # 5. Classification du type de document (sur le texte pseudonymisé) ----------------------
+    classification = _classify(text, settings, services)
+    report["classification"] = classification.to_dict()
+
+    # 6. Rendu --------------------------------------------------------------------------------
     pdf = render_pdf(pdf_bytes, content, spans, dpi=settings.ocr_render_dpi)
     report["duree_secondes"] = round(time.monotonic() - started, 2)
 
     status = "quarantine" if reasons else "ok"
     report["statut"] = status
     report["motifs"] = reasons
-    return PipelineResult(status=status, reasons=reasons, pdf=pdf, text=text, records=records, report=report)
+    return PipelineResult(
+        status=status,
+        reasons=reasons,
+        pdf=pdf,
+        text=text,
+        records=records,
+        report=report,
+        classification=classification,
+    )
+
+
+def _rejected(reason: str, report: dict, settings: Settings) -> PipelineResult:
+    """Document rejeté avant extraction : quarantaine, sans classification possible."""
+    classification = unclassified(STATUT_NON_APPLICABLE, settings.unclassified_folder)
+    report = {**report, "statut": "quarantine", "motifs": [reason], "classification": classification.to_dict()}
+    return PipelineResult(status="quarantine", reasons=[reason], report=report, classification=classification)
+
+
+def _classify(text: str, settings: Settings, services: Services) -> Classification:
+    if not settings.classification_enabled or services.classifier is None:
+        return unclassified(STATUT_DESACTIVEE, settings.unclassified_folder)
+    try:
+        raw, doctypes, prompt_sha256 = services.classifier.classify(text)
+    except CatalogError:
+        raise  # référentiel invalide : erreur de configuration, le message sera réessayé
+    except Exception:  # noqa: BLE001 - une classification ratée ne doit pas bloquer la pseudonymisation
+        log.exception("Classification en échec : document rangé dans « %s »", settings.unclassified_folder)
+        return unclassified(STATUT_ERREUR, settings.unclassified_folder, services.classifier.prompt_sha256)
+    return decide(
+        raw,
+        doctypes,
+        min_confidence=settings.classification_min_confidence,
+        secondary_min_confidence=settings.classification_secondary_min_confidence,
+        unclassified_folder=settings.unclassified_folder,
+        prompt_sha256=prompt_sha256,
+    )
 
 
 def _strategy(catalog: FieldCatalog | None, entity_type: str) -> str | None:

@@ -1,4 +1,4 @@
-"""Agents IA (Azure OpenAI) : détection initiale et contrôle qualité du texte pseudonymisé."""
+"""Agents IA (Azure OpenAI) : détection, contrôle qualité et classification du document."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import json
 import logging
 from typing import Callable, Iterable
 
+from ..doctypes import UNCLASSIFIED, DocTypeCatalog
 from ..models import Entity, Line
 from ..prompts import RenderedPrompt
 
@@ -33,6 +34,30 @@ def entities_schema(types: tuple[str, ...]) -> dict:
             }
         },
         "required": ["entities"],
+        "additionalProperties": False,
+    }
+
+
+def classification_schema(doc_types: tuple[str, ...]) -> dict:
+    """Schéma JSON strict de l'agent de classification (types du référentiel + NON_CLASSE)."""
+    return {
+        "type": "object",
+        "properties": {
+            "types": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "type": {"type": "string", "enum": [*doc_types, UNCLASSIFIED]},
+                        "confidence": {"type": "number"},
+                        "indices": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["type", "confidence", "indices"],
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["types"],
         "additionalProperties": False,
     }
 
@@ -190,3 +215,27 @@ class VerificationAgent:
 
     def verify(self, pseudonymised_lines: list[tuple[str, str]]) -> list[Entity]:
         return self._agent.run([item for item in pseudonymised_lines if item[1].strip()])
+
+
+class ClassificationAgent:
+    """Classe le document à partir de son texte DÉJÀ PSEUDONYMISÉ (minimisation des données)."""
+
+    def __init__(self, llm: AzureOpenAIJsonAgent, prompt_provider: Callable[[], RenderedPrompt], *, max_chars: int):
+        self._llm = llm
+        self._prompt_provider = prompt_provider
+        self._max_chars = max_chars
+        self.prompt_sha256: str | None = None
+
+    def classify(self, pseudonymised_text: str) -> tuple[list[dict], DocTypeCatalog, str]:
+        prompt = self._prompt_provider()
+        self.prompt_sha256 = prompt.sha256
+        excerpt = pseudonymised_text[: self._max_chars]
+        data = self._llm.run(
+            prompt.text,
+            f"<document>\n{excerpt}\n</document>",
+            classification_schema(prompt.doctypes.types),
+            "classification",
+        )
+        raw = data.get("types", [])
+        log.info("Classification : %s", [(t.get("type"), t.get("confidence")) for t in raw])
+        return raw, prompt.doctypes, prompt.sha256

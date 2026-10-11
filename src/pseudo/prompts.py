@@ -10,13 +10,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from .doctypes import DocTypeCatalog, parse_doctypes
 from .fields import FieldCatalog, parse_fields
 
 CHAMPS_FILE = "champs-a-pseudonymiser.md"
 DETECTION_FILE = "agent-detection.md"
 VERIFICATION_FILE = "agent-verification.md"
+DOCTYPES_FILE = "types-documents.md"
+CLASSIFICATION_FILE = "agent-classification.md"
 CHAMPS_PLACEHOLDER = "{{CHAMPS}}"
 TYPES_PLACEHOLDER = "{{TYPES}}"
+DOCTYPES_PLACEHOLDER = "{{TYPES_DOCUMENTS}}"
+DOCTYPES_LIST_PLACEHOLDER = "{{LISTE_TYPES}}"
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->\s*", re.DOTALL)
 
 
@@ -70,7 +75,8 @@ class RenderedPrompt:
     name: str
     text: str
     sha256: str
-    catalog: FieldCatalog
+    catalog: FieldCatalog | None = None  # champs à pseudonymiser (agents détection / vérification)
+    doctypes: DocTypeCatalog | None = None  # types de document (agent de classification)
 
 
 class PromptRepository:
@@ -91,6 +97,24 @@ class PromptRepository:
             text=text,
             sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
             catalog=catalog,
+        )
+
+    def doctypes(self) -> DocTypeCatalog:
+        """Types de document déclarés (lève DocTypeCatalogError si le référentiel est invalide)."""
+        return parse_doctypes(strip_comments(self._source.read(DOCTYPES_FILE)))
+
+    def classification(self) -> RenderedPrompt:
+        referential = strip_comments(self._source.read(DOCTYPES_FILE))
+        doctypes = parse_doctypes(referential)
+        text = strip_comments(self._source.read(CLASSIFICATION_FILE))
+        text = text.replace(DOCTYPES_PLACEHOLDER, referential).replace(
+            DOCTYPES_LIST_PLACEHOLDER, doctypes.types_markdown()
+        )
+        return RenderedPrompt(
+            name=CLASSIFICATION_FILE,
+            text=text,
+            sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            doctypes=doctypes,
         )
 
     def detection(self) -> RenderedPrompt:

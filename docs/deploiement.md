@@ -118,6 +118,11 @@ Mises à jour partielles :
 | `QUARANTINE_ON_UNLOCATED` | true | Quarantaine si une entité signalée par un agent est introuvable dans le texte. |
 | `LANGUAGE_PII_CATEGORIES` | `Person:PERSONNE,...` | Correspondance entre les catégories Azure AI Language et les types internes. |
 | `PROMPT_CACHE_SECONDS` | 300 | Délai de rechargement des prompts. |
+| `CLASSIFICATION_ENABLED` | true | Classe chaque document par type et range les sorties dans un sous-dossier. Si `false`, les sorties sont écrites à la racine des containers. |
+| `CLASSIFICATION_MIN_CONFIDENCE` | 0.6 | Confiance minimale du type principal. En dessous, le document va dans `non-classe/`. |
+| `CLASSIFICATION_SECONDARY_MIN_CONFIDENCE` | 0.3 | Confiance minimale pour conserver un type secondaire dans le rapport, la trace et les métadonnées. |
+| `CLASSIFICATION_MAX_CHARS` | 6000 | Nombre de caractères du texte pseudonymisé envoyés à l'agent de classification. |
+| `UNCLASSIFIED_FOLDER` | non-classe | Nom du dossier des documents dont le type n'a pas pu être déterminé. |
 
 ## Mode réseau privé
 

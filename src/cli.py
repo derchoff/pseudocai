@@ -64,6 +64,10 @@ def main() -> int:
     )
     if result.status == "ok":
         store.save(result.records)
+    classification = result.classification
+    if classification is not None:
+        scores = ", ".join(f"{t.type} {t.confidence:.2f}" for t in classification.types) or "aucun"
+        print(f"Type : {classification.principal} (dossier « {classification.dossier or '-'} » ; {scores})")
     print(f"Statut : {result.status} {result.reasons or ''} -> {args.out}")
     return 0 if result.status == "ok" else 2
 

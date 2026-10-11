@@ -24,6 +24,10 @@ class MappingStore(Protocol):
     def save_trace(self, trace: dict) -> None:
         ...
 
+    def last_trace(self, document_id: str) -> dict | None:
+        """Dernière trace d'un document (sert à nettoyer les sorties d'un traitement précédent)."""
+        ...
+
 
 class NullMappingStore:
     def save(self, records: list[MappingRecord]) -> None:
@@ -31,6 +35,9 @@ class NullMappingStore:
 
     def save_trace(self, trace: dict) -> None:
         pass
+
+    def last_trace(self, document_id: str) -> dict | None:
+        return None
 
 
 class JsonFileMappingStore:
@@ -50,6 +57,9 @@ class JsonFileMappingStore:
 
     def save_trace(self, trace: dict) -> None:
         pass
+
+    def last_trace(self, document_id: str) -> dict | None:
+        return None
 
 
 class CosmosMappingStore:
@@ -79,3 +89,11 @@ class CosmosMappingStore:
 
     def save_trace(self, trace: dict) -> None:
         self._traces.upsert_item(trace)
+
+    def last_trace(self, document_id: str) -> dict | None:
+        items = self._traces.query_items(
+            query="SELECT TOP 1 * FROM c WHERE c.documentId = @id ORDER BY c.processedAt DESC",
+            parameters=[{"name": "@id", "value": document_id}],
+            partition_key=document_id,
+        )
+        return next(iter(items), None)
