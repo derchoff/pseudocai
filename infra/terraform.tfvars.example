@@ -19,8 +19,15 @@ allowed_ip_ranges         = [] # ex. ["203.0.113.10"] : IP du poste/runner de d�
 function_max_instances      = 10
 function_instance_memory_mb = 2048
 delete_source_after_success = false
-incoming_retention_days     = 7
+incoming_retention_days      = 7
+work_retention_days         = 1
 quarantine_retention_days   = 30
+
+# Images (photos, scans) : crée l'app images et ajoute les extensions au filtre Event Grid
+enable_image_processing      = false
+image_function_max_instances = 5
+image_function_memory_mb     = 4096
+# image_extensions = [".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff", ".webp", ".bmp"]
 
 # Groupe Entra autorisé à ré-identifier les jetons (reidentify.py)
 reidentification_principal_ids = []

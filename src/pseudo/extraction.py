@@ -112,8 +112,9 @@ def _di_word(w, sx: float, sy: float) -> Word:
     poly = list(w.polygon or [])
     xs, ys = poly[0::2], poly[1::2]
     rect = (min(xs) * sx, min(ys) * sy, max(xs) * sx, max(ys) * sy) if xs else (0, 0, 0, 0)
+    quad = tuple(v * (sx if k % 2 == 0 else sy) for k, v in enumerate(poly)) if len(poly) == 8 else None
     conf = w.confidence if w.confidence is not None else 1.0
-    return Word(text=w.content, rect=rect, confidence=conf)
+    return Word(text=w.content, rect=rect, confidence=conf, quad=quad)
 
 
 def image_text_lines(native: PageContent, ocr_page: PageContent, overlap_threshold: float = 0.5) -> list[Line]:

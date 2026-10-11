@@ -1,4 +1,4 @@
-# Compte "data" : entrées, sorties pseudonymisées, quarantaine et prompts.
+# Compte "data" : dépôt (incoming), fichiers intermédiaires (work), sorties, quarantaine et prompts.
 resource "azurerm_storage_account" "data" {
   name                            = "st${local.compact}data"
   location                        = azurerm_resource_group.main.location
@@ -56,6 +56,22 @@ resource "azurerm_storage_management_policy" "data" {
     }
   }
 
+  # Filet de sécurité : les fichiers intermédiaires sont supprimés en fin de traitement ; ceux
+  # d'un traitement interrompu sont purgés ici.
+  rule {
+    name    = "purge-work"
+    enabled = true
+    filters {
+      prefix_match = ["${local.containers.work}/"]
+      blob_types   = ["blockBlob"]
+    }
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = var.work_retention_days
+      }
+    }
+  }
+
   rule {
     name    = "purge-quarantine"
     enabled = true
@@ -99,11 +115,19 @@ resource "azurerm_storage_container" "deployments" {
   container_access_type = "private"
 }
 
+resource "azurerm_storage_container" "deployments_images" {
+  count                 = var.enable_image_processing ? 1 : 0
+  name                  = "deployments-images"
+  storage_account_id    = azurerm_storage_account.func.id
+  container_access_type = "private"
+}
+
 # ------------------------------------------------------------------ RBAC stockage
 
-# Function : lecture des entrées et des prompts, écriture des sorties et de la quarantaine.
+# App principale : lecture des entrées (et suppression si delete_source_after_success), lecture et
+# purge des fichiers intermédiaires, écriture des sorties et de la quarantaine, lecture des prompts.
 resource "azurerm_role_assignment" "func_data_containers" {
-  for_each             = toset(["incoming", "pseudonymised", "quarantine"])
+  for_each             = toset(["incoming", "work", "pseudonymised", "quarantine"])
   scope                = azurerm_storage_container.data[each.key].id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_user_assigned_identity.func.principal_id
@@ -134,7 +158,28 @@ resource "azurerm_role_assignment" "func_storage_table" {
   principal_id         = azurerm_user_assigned_identity.func.principal_id
 }
 
-# Déployeur : dépôt des prompts et des PDF de test.
+# App images : lecture des entrées, écriture des fichiers intermédiaires et de la quarantaine,
+# nettoyage des sorties d'un traitement précédent (retraitement).
+resource "azurerm_role_assignment" "images_data_containers" {
+  for_each             = var.enable_image_processing ? toset(["incoming", "work", "pseudonymised", "quarantine"]) : toset([])
+  scope                = azurerm_storage_container.data[each.key].id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_user_assigned_identity.func_images[0].principal_id
+}
+
+# Runtime Functions de l'app images (même compte « func », container de déploiement distinct).
+resource "azurerm_role_assignment" "images_storage_runtime" {
+  for_each = var.enable_image_processing ? toset([
+    "Storage Blob Data Owner",
+    "Storage Queue Data Contributor",
+    "Storage Table Data Contributor",
+  ]) : toset([])
+  scope                = azurerm_storage_account.func.id
+  role_definition_name = each.value
+  principal_id         = azurerm_user_assigned_identity.func_images[0].principal_id
+}
+
+# Déployeur : dépôt des prompts et des documents de test.
 resource "azurerm_role_assignment" "deployer_data" {
   count                = var.grant_deployer_data_access ? 1 : 0
   scope                = azurerm_storage_account.data.id

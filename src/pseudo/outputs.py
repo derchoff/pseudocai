@@ -1,0 +1,231 @@
+"""Écriture des résultats, commune aux trois étapes (routage, préparation image, pseudonymisation).
+
+Arborescence produite (le chemin d'origine est conservé sous le dossier du type) :
+
+    pseudonymised/<dossier du type>/<chemin>.<ext d'origine> | <chemin>.pseudonymise.txt | <chemin>.rapport.json
+    quarantine/<dossier du type>/<chemin>.<ext d'origine> (original) | <chemin>.<ext>.motif.json
+
+Chaque étape qui termine un document (succès ou quarantaine) :
+- écrit ses fichiers avec les métadonnées de classification ;
+- supprime les sorties d'un traitement précédent devenues obsolètes (changement de type,
+  passage de pseudonymised/ à quarantine/ ou inversement) ;
+- enregistre une trace (Cosmos DB) avec la liste des sorties écrites ;
+- supprime les fichiers intermédiaires de work/ et, si demandé, le document d'entrée.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import posixpath
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Protocol
+
+from .classification import Classification
+from .config import Settings
+from .formats import CONTENT_TYPES
+from .jobs import Job
+from .mapping_store import MappingStore
+
+log = logging.getLogger(__name__)
+
+STAGE_ROUTING = "routage"
+STAGE_IMAGE = "preparation_image"
+STAGE_PSEUDONYMISATION = "pseudonymisation"
+
+
+class StorageContext(Protocol):
+    settings: Settings
+    blob_service: object
+    mapping_store: MappingStore
+
+
+@dataclass
+class SimpleStorageContext:
+    settings: Settings
+    blob_service: object
+    mapping_store: MappingStore
+
+
+@dataclass
+class OutputFile:
+    name: str  # chemin relatif au container
+    data: bytes
+    content_type: str
+
+
+def output_names(source_name: str, folder: str = "") -> dict[str, str]:
+    prefix = f"{folder}/" if folder else ""
+    stem, _ = posixpath.splitext(source_name)
+    return {
+        "document": f"{prefix}{source_name}",
+        "text": f"{prefix}{stem}.pseudonymise.txt",
+        "report": f"{prefix}{stem}.rapport.json",
+        "reason": f"{prefix}{source_name}.motif.json",
+    }
+
+
+def previous_trace(ctx: StorageContext, job: Job) -> dict | None:
+    try:
+        return ctx.mapping_store.last_trace(job.document_id)
+    except Exception:  # noqa: BLE001 - l'absence d'historique ne doit pas bloquer le traitement
+        log.warning("Trace précédente illisible doc=%s : pas de nettoyage des anciennes sorties", job.document_id)
+        return None
+
+
+def publish(
+    ctx: StorageContext,
+    job: Job,
+    document: bytes,
+    text: str,
+    report: dict,
+    classification: Classification,
+    previous: dict | None,
+) -> list[str]:
+    """Écrit les sorties pseudonymisées (document au format d'origine, texte, rapport)."""
+    settings = ctx.settings
+    names = output_names(job.source_name, classification.dossier)
+    files = [
+        OutputFile(names["document"], document, CONTENT_TYPES[job.source_format]),
+        OutputFile(names["text"], text.encode("utf-8"), "text/plain; charset=utf-8"),
+        OutputFile(names["report"], _json(report), "application/json"),
+    ]
+    outputs = _write(ctx, settings.output_container, files, classification)
+    _finish(ctx, job, "ok", report, classification, outputs, previous, STAGE_PSEUDONYMISATION)
+    return outputs
+
+
+def quarantine(
+    ctx: StorageContext,
+    job: Job,
+    original: bytes,
+    reasons: list[str],
+    report: dict,
+    classification: Classification,
+    previous: dict | None,
+    stage: str,
+) -> list[str]:
+    """Copie l'original en quarantaine avec le motif (le document d'entrée reste dans incoming/)."""
+    settings = ctx.settings
+    names = output_names(job.source_name, classification.dossier)
+    motif = {
+        "motifs": reasons,
+        "etape": stage,
+        "origine": job.origin,
+        "format": job.source_format,
+        "classification": classification.to_dict(),
+        "rapport": report,
+        "date": _now(),
+    }
+    files = [
+        OutputFile(names["document"], original, CONTENT_TYPES.get(job.source_format, "application/octet-stream")),
+        OutputFile(names["reason"], _json(motif), "application/json"),
+    ]
+    outputs = _write(ctx, settings.quarantine_container, files, classification)
+    _finish(ctx, job, "quarantine", {**report, "motifs": reasons}, classification, outputs, previous, stage)
+    log.warning(
+        "Document en quarantaine doc=%s etape=%s type=%s motifs=%s",
+        job.document_id,
+        stage,
+        classification.principal,
+        reasons,
+    )
+    return outputs
+
+
+def delete_work_files(ctx: StorageContext, job: Job) -> None:
+    """Supprime les fichiers intermédiaires (copies du document : données personnelles)."""
+    if job.prepared is None:
+        return
+    for path in job.prepared.paths():
+        _delete_if_exists(ctx, ctx.settings.work_container, path)
+
+
+def _write(ctx: StorageContext, container: str, files: list[OutputFile], classification: Classification) -> list[str]:
+    from azure.storage.blob import ContentSettings
+
+    client = ctx.blob_service.get_container_client(container)
+    metadata = classification.metadata()
+    for f in files:
+        client.upload_blob(
+            f.name,
+            f.data,
+            overwrite=True,
+            content_settings=ContentSettings(content_type=f.content_type),
+            metadata=metadata,
+        )
+    return [f"{container}/{f.name}" for f in files]
+
+
+def _finish(
+    ctx: StorageContext,
+    job: Job,
+    status: str,
+    report: dict,
+    classification: Classification,
+    outputs: list[str],
+    previous: dict | None,
+    stage: str,
+) -> None:
+    _remove_previous_outputs(ctx, previous, outputs)
+    ctx.mapping_store.save_trace(
+        {
+            "id": str(uuid.uuid4()),
+            "documentId": job.document_id,
+            "jobId": job.job_id,
+            "blob": f"{job.source_container}/{job.source_name}",
+            "origin": job.origin,
+            "sourceFormat": job.source_format,
+            "stage": stage,
+            "status": status,
+            "processedAt": _now(),
+            "classification": classification.to_dict(),
+            "preparation": job.prepared.preparation if job.prepared else None,
+            "sorties": outputs,
+            "report": report,
+        }
+    )
+    delete_work_files(ctx, job)
+    if ctx.settings.delete_source_after_success:
+        _delete_if_exists(ctx, job.source_container, job.source_name)
+
+
+def _remove_previous_outputs(ctx: StorageContext, previous: dict | None, current_outputs: list[str]) -> None:
+    if not previous:
+        return
+    settings = ctx.settings
+    allowed = {settings.output_container, settings.quarantine_container}
+    removed = 0
+    for path in previous.get("sorties", []):
+        if path in current_outputs:
+            continue
+        container, _, name = path.partition("/")
+        if container not in allowed or not name:
+            continue  # ne jamais supprimer ailleurs que dans les containers de sortie
+        removed += _delete_if_exists(ctx, container, name)
+    if removed:
+        log.info(
+            "%d sortie(s) d'un traitement précédent supprimée(s) (type précédent : %s)",
+            removed,
+            (previous.get("classification") or {}).get("principal"),
+        )
+
+
+def _delete_if_exists(ctx: StorageContext, container: str, name: str) -> int:
+    from azure.core.exceptions import ResourceNotFoundError
+
+    try:
+        ctx.blob_service.get_blob_client(container, name).delete_blob()
+        return 1
+    except ResourceNotFoundError:
+        return 0
+
+
+def _json(data: dict) -> bytes:
+    return json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()

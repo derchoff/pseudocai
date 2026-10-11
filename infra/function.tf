@@ -1,68 +1,61 @@
-resource "azurerm_service_plan" "func" {
-  name                = "asp-${local.base}"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  os_type             = "Linux"
-  sku_name            = "FC1"
-  tags                = local.tags
+# Deux Function Apps Flex Consumption :
+# - principale : étape 1 (routage incoming/) et étape 3 (pseudonymisation) ;
+# - images (si enable_image_processing) : étape 2 (préparation des images, dépendances OpenCV).
+
+locals {
+  # Paramètres communs aux deux apps : stockage, files, traces, rangement.
+  common_app_settings = {
+    ServiceBusConnection__fullyQualifiedNamespace = "${azurerm_servicebus_namespace.main.name}.servicebus.windows.net"
+    ServiceBusConnection__credential              = "managedidentity"
+    INCOMING_QUEUE_NAME                           = azurerm_servicebus_queue.incoming_events.name
+    PDF_QUEUE_NAME                                = azurerm_servicebus_queue.pdf_jobs.name
+    IMAGE_QUEUE_NAME                              = azurerm_servicebus_queue.image_jobs.name
+
+    STORAGE_ACCOUNT_URL         = azurerm_storage_account.data.primary_blob_endpoint
+    INCOMING_CONTAINER          = local.containers.incoming
+    WORK_CONTAINER              = local.containers.work
+    OUTPUT_CONTAINER            = local.containers.pseudonymised
+    QUARANTINE_CONTAINER        = local.containers.quarantine
+    CONFIG_CONTAINER            = local.containers.config
+    DELETE_SOURCE_AFTER_SUCCESS = tostring(var.delete_source_after_success)
+    IMAGE_PROCESSING_ENABLED    = tostring(var.enable_image_processing)
+    IMAGE_EXTENSIONS            = join(",", var.image_extensions)
+
+    COSMOS_ENDPOINT          = azurerm_cosmosdb_account.main.endpoint
+    COSMOS_DATABASE          = azurerm_cosmosdb_sql_database.main.name
+    COSMOS_MAPPING_CONTAINER = azurerm_cosmosdb_sql_container.mappings.name
+    COSMOS_TRACE_CONTAINER   = azurerm_cosmosdb_sql_container.traces.name
+  }
 }
 
-resource "azurerm_function_app_flex_consumption" "main" {
-  name                = "func-${local.base}-${random_string.suffix.result}"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  service_plan_id     = azurerm_service_plan.func.id
+# ------------------------------------------------------------------ app principale
 
-  runtime_name    = "python"
-  runtime_version = "3.12"
+module "function_main" {
+  source = "./modules/flex_function"
 
-  storage_container_type            = "blobContainer"
-  storage_container_endpoint        = "${azurerm_storage_account.func.primary_blob_endpoint}${azurerm_storage_container.deployments.name}"
-  storage_authentication_type       = "UserAssignedIdentity"
-  storage_user_assigned_identity_id = azurerm_user_assigned_identity.func.id
-
-  maximum_instance_count = var.function_max_instances
-  instance_memory_in_mb  = var.function_instance_memory_mb
-
-  virtual_network_subnet_id = local.private ? azurerm_subnet.func[0].id : null
-  # Aucun déclencheur HTTP n'est exposé ; l'accès public sert uniquement au déploiement (SCM,
-  # authentification Entra ID obligatoire puisque l'auth basique est désactivée).
-  public_network_access_enabled = true
-  https_only                    = true
-
-  webdeploy_publish_basic_authentication_enabled = false
-
-  identity {
-    type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.func.id]
-  }
-
-  site_config {
-    application_insights_connection_string = azurerm_application_insights.main.connection_string
-    minimum_tls_version                    = "1.2"
-  }
+  name                           = "func-${local.base}-${random_string.suffix.result}"
+  plan_name                      = "asp-${local.base}"
+  resource_group_name            = azurerm_resource_group.main.name
+  location                       = azurerm_resource_group.main.location
+  subscription_id                = var.subscription_id
+  storage_account_name           = azurerm_storage_account.func.name
+  storage_blob_endpoint          = azurerm_storage_account.func.primary_blob_endpoint
+  deployment_container_name      = azurerm_storage_container.deployments.name
+  identity_id                    = azurerm_user_assigned_identity.func.id
+  identity_client_id             = azurerm_user_assigned_identity.func.client_id
+  app_insights_connection_string = azurerm_application_insights.main.connection_string
+  subnet_id                      = local.private ? azurerm_subnet.func[0].id : null
+  max_instances                  = var.function_max_instances
+  memory_mb                      = var.function_instance_memory_mb
+  tags                           = local.tags
 
   app_settings = merge(
+    local.common_app_settings,
     {
-      # Identité managée utilisée par DefaultAzureCredential et par les déclencheurs.
-      AZURE_CLIENT_ID = azurerm_user_assigned_identity.func.client_id
-
-      AzureWebJobsStorage__accountName = azurerm_storage_account.func.name
-      AzureWebJobsStorage__credential  = "managedidentity"
-      AzureWebJobsStorage__clientId    = azurerm_user_assigned_identity.func.client_id
-
-      ServiceBusConnection__fullyQualifiedNamespace = "${azurerm_servicebus_namespace.main.name}.servicebus.windows.net"
-      ServiceBusConnection__credential              = "managedidentity"
-      ServiceBusConnection__clientId                = azurerm_user_assigned_identity.func.client_id
-      SERVICEBUS_QUEUE_NAME                         = azurerm_servicebus_queue.pdf_events.name
-
-      STORAGE_ACCOUNT_URL         = azurerm_storage_account.data.primary_blob_endpoint
-      INPUT_CONTAINER             = local.containers.incoming
-      OUTPUT_CONTAINER            = local.containers.pseudonymised
-      QUARANTINE_CONTAINER        = local.containers.quarantine
-      CONFIG_CONTAINER            = local.containers.config
-      PROMPTS_PREFIX              = "prompts/"
-      DELETE_SOURCE_AFTER_SUCCESS = tostring(var.delete_source_after_success)
+      # function_app.py n'enregistre que route_incoming et pseudonymise_job.
+      FUNCTION_APP_ROLE              = "main"
+      ServiceBusConnection__clientId = azurerm_user_assigned_identity.func.client_id
+      PROMPTS_PREFIX                 = "prompts/"
 
       DOCINTEL_ENDPOINT       = azurerm_cognitive_account.docintel.endpoint
       OPENAI_ENDPOINT         = azurerm_cognitive_account.openai.endpoint
@@ -74,16 +67,9 @@ resource "azurerm_function_app_flex_consumption" "main" {
       KEY_VAULT_URL          = azurerm_key_vault.main.vault_uri
       HMAC_SECRET_NAME       = azurerm_key_vault_secret.hmac_key.name
       ENCRYPTION_SECRET_NAME = azurerm_key_vault_secret.encryption_key.name
-
-      COSMOS_ENDPOINT          = azurerm_cosmosdb_account.main.endpoint
-      COSMOS_DATABASE          = azurerm_cosmosdb_sql_database.main.name
-      COSMOS_MAPPING_CONTAINER = azurerm_cosmosdb_sql_container.mappings.name
-      COSMOS_TRACE_CONTAINER   = azurerm_cosmosdb_sql_container.traces.name
     },
     var.pipeline_settings,
   )
-
-  tags = local.tags
 
   depends_on = [
     time_sleep.rbac_propagation,
@@ -92,25 +78,56 @@ resource "azurerm_function_app_flex_consumption" "main" {
   ]
 }
 
-# Contournement d'un comportement du provider azurerm (5.x) : pour une app Flex Consumption, il
-# écrit toujours un paramètre AzureWebJobsStorage = "DefaultEndpointsProtocol=...;AccountKey=;..."
-# (clé vide), même avec storage_authentication_type = "UserAssignedIdentity". Cette chaîne est
-# prioritaire sur les paramètres AzureWebJobsStorage__* (identité managée) : l'hôte Functions
-# tente alors une authentification par clé, refusée, et ne démarre pas (« unhealthy »).
-# Le paramètre est supprimé après chaque création ou modification de la Function (le provider
-# le réécrit à chaque mise à jour). Nécessite Azure CLI connecté sur le poste qui exécute Terraform ;
-# --subscription garantit que la commande vise bien l'abonnement du déploiement.
-resource "terraform_data" "remove_webjobs_storage_connection_string" {
-  triggers_replace = [sha1(jsonencode(azurerm_function_app_flex_consumption.main))]
+# Reprise de l'app existante dans le module, sans la recréer.
+moved {
+  from = azurerm_service_plan.func
+  to   = module.function_main.azurerm_service_plan.this
+}
 
-  provisioner "local-exec" {
-    command = join(" ", [
-      "az functionapp config appsettings delete",
-      "--subscription ${var.subscription_id}",
-      "--resource-group ${azurerm_resource_group.main.name}",
-      "--name ${azurerm_function_app_flex_consumption.main.name}",
-      "--setting-names AzureWebJobsStorage",
-      "--output none",
-    ])
-  }
+moved {
+  from = azurerm_function_app_flex_consumption.main
+  to   = module.function_main.azurerm_function_app_flex_consumption.this
+}
+
+moved {
+  from = terraform_data.remove_webjobs_storage_connection_string
+  to   = module.function_main.terraform_data.remove_webjobs_storage_connection_string
+}
+
+# ------------------------------------------------------------------ app images (optionnelle)
+
+module "function_images" {
+  source = "./modules/flex_function"
+  count  = var.enable_image_processing ? 1 : 0
+
+  name                           = "func-${local.base}-${random_string.suffix.result}-img"
+  plan_name                      = "asp-${local.base}-img"
+  resource_group_name            = azurerm_resource_group.main.name
+  location                       = azurerm_resource_group.main.location
+  subscription_id                = var.subscription_id
+  storage_account_name           = azurerm_storage_account.func.name
+  storage_blob_endpoint          = azurerm_storage_account.func.primary_blob_endpoint
+  deployment_container_name      = azurerm_storage_container.deployments_images[0].name
+  identity_id                    = azurerm_user_assigned_identity.func_images[0].id
+  identity_client_id             = azurerm_user_assigned_identity.func_images[0].client_id
+  app_insights_connection_string = azurerm_application_insights.main.connection_string
+  subnet_id                      = local.private ? azurerm_subnet.func_images[0].id : null
+  max_instances                  = var.image_function_max_instances
+  memory_mb                      = var.image_function_memory_mb
+  tags                           = local.tags
+
+  app_settings = merge(
+    local.common_app_settings,
+    {
+      # Même code source que l'app principale ; function_app.py n'enregistre que prepare_image.
+      FUNCTION_APP_ROLE              = "images"
+      ServiceBusConnection__clientId = azurerm_user_assigned_identity.func_images[0].client_id
+    },
+    var.pipeline_settings,
+  )
+
+  depends_on = [
+    time_sleep.rbac_propagation,
+    azurerm_role_assignment.images_storage_runtime,
+  ]
 }

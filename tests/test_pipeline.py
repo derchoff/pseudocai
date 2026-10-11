@@ -149,7 +149,7 @@ def test_native_pdf_is_pseudonymised(settings):
     svc = services()
     result = run_pipeline(make_text_pdf(), settings, svc)
     assert result.status == "ok", result.reasons
-    text = output_text(result.pdf)
+    text = output_text(result.output)
     for secret in ("DUPONT", "Jean", "12/03/1985", "06 12 34 56 78"):
         assert secret not in text
         assert secret not in result.text
@@ -171,7 +171,7 @@ def test_verifier_residual_is_redacted(settings):
     result = run_pipeline(make_text_pdf(), settings, services(verifier=verifier))
     # 1er tour : résidu trouvé et masqué ; 2e tour : plus rien en clair -> statut ok.
     assert result.status == "ok", result.reasons
-    assert "Lilas" not in output_text(result.pdf)
+    assert "Lilas" not in output_text(result.output)
     assert "Lilas" not in result.text
     assert verifier.calls == 2
 
@@ -190,7 +190,7 @@ def test_scanned_pdf_is_rasterised_and_masked(settings):
     result = run_pipeline(pdf, settings, svc)
     assert result.status == "ok", result.reasons
     assert result.report["pages_ocr"] == 1
-    out = pymupdf.open(stream=result.pdf, filetype="pdf")
+    out = pymupdf.open(stream=result.output, filetype="pdf")
     page_text = out[0].get_text()
     assert svc.pseudonymizer.token("NOM", "DUPONT") in page_text
     # Le pixel au coin du mot « DUPONT » doit être recouvert par la couleur de masquage.
@@ -218,7 +218,7 @@ def test_rotated_native_page_is_pseudonymised(settings):
     upright[0].remove_rotation()
     result = run_pipeline(rotated, settings, services(ocr=TruthOcr(upright.tobytes())))
     assert result.status == "ok", result.reasons
-    text = output_text(result.pdf)
+    text = output_text(result.output)
     assert "DUPONT" not in text and "06 12 34 56 78" not in text
     assert "[NOM_" in text
 
@@ -234,23 +234,23 @@ def test_text_inside_image_on_native_page_is_pseudonymised(settings):
 
     # La page reste native (couche texte conservée) ...
     assert result.report["pages_natives"] == 1
-    assert "Attestation" in output_text(result.pdf)
+    assert "Attestation" in output_text(result.output)
     # ... et le texte du logo, lu par OCR, est détecté puis pseudonymisé.
     assert result.report["lignes_texte_images"] == 1
     assert "MARTIN" not in result.text
     assert svc.pseudonymizer.token("NOM", "MARTIN") in result.text
-    assert svc.pseudonymizer.token("NOM", "MARTIN") in output_text(result.pdf)
+    assert svc.pseudonymizer.token("NOM", "MARTIN") in output_text(result.output)
 
     # Les pixels du mot « MARTIN » dans l'image sont effacés.
     truth = extract_native_page(pymupdf.open(stream=truth_pdf, filetype="pdf")[0])
     word = next(w for line in truth.lines for w in line.words if w.text == "MARTIN")
-    pix = pymupdf.open(stream=result.pdf, filetype="pdf")[0].get_pixmap(dpi=72)
+    pix = pymupdf.open(stream=result.output, filetype="pdf")[0].get_pixmap(dpi=72)
     x, y = int(word.rect[0]) + 1, int(word.rect[1]) + 1
     assert all(abs(c - FILL) <= 3 for c in pix.pixel(x, y)[:3])
     # « Plomberie » (non personnel) reste visible dans l'image : pixels non uniformes.
     plomberie = next(w for line in truth.lines for w in line.words if w.text == "Plomberie")
     clip = pymupdf.Rect(plomberie.rect)
-    region = pymupdf.open(stream=result.pdf, filetype="pdf")[0].get_pixmap(dpi=72, clip=clip)
+    region = pymupdf.open(stream=result.output, filetype="pdf")[0].get_pixmap(dpi=72, clip=clip)
     assert len(set(region.samples)) > 2
 
 

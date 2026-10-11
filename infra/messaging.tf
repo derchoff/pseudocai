@@ -1,4 +1,4 @@
-# Storage (BlobCreated) -> Event Grid -> Service Bus -> Function
+# Storage incoming/ (BlobCreated) -> Event Grid -> Service Bus -> routeur -> files par étape
 
 resource "azurerm_servicebus_namespace" "main" {
   name                          = "sb-${local.base}-${random_string.suffix.result}"
@@ -23,13 +23,41 @@ resource "azurerm_servicebus_namespace" "main" {
   }
 }
 
-resource "azurerm_servicebus_queue" "pdf_events" {
-  name                                 = "pdf-events"
+# Une file par étape. Chaque file a sa dead-letter (messages en échec après max_delivery_count).
+#   incoming-events : événements BlobCreated de incoming/  -> routeur
+#   pdf-jobs       : jobs de pseudonymisation (PDF, ou image préparée)
+#   image-jobs     : jobs de préparation d'image (créée même si les images sont désactivées : vide)
+resource "azurerm_servicebus_queue" "incoming_events" {
+  name                                 = "incoming-events"
+  namespace_id                         = azurerm_servicebus_namespace.main.id
+  lock_duration                        = "PT1M"
+  max_delivery_count                   = var.servicebus_max_delivery_count
+  default_message_ttl                  = "P7D"
+  dead_lettering_on_message_expiration = true
+}
+
+resource "azurerm_servicebus_queue" "pdf_jobs" {
+  name                                 = "pdf-jobs"
   namespace_id                         = azurerm_servicebus_namespace.main.id
   lock_duration                        = "PT5M"
   max_delivery_count                   = var.servicebus_max_delivery_count
   default_message_ttl                  = "P7D"
   dead_lettering_on_message_expiration = true
+}
+
+resource "azurerm_servicebus_queue" "image_jobs" {
+  name                                 = "image-jobs"
+  namespace_id                         = azurerm_servicebus_namespace.main.id
+  lock_duration                        = "PT5M"
+  max_delivery_count                   = var.servicebus_max_delivery_count
+  default_message_ttl                  = "P7D"
+  dead_lettering_on_message_expiration = true
+}
+
+locals {
+  # Extensions transmises par Event Grid (comparaison insensible à la casse : .JPG est accepté).
+  # Le routeur vérifie ensuite le format réel du fichier (signature), pas seulement l'extension.
+  accepted_extensions = concat([".pdf"], var.enable_image_processing ? var.image_extensions : [])
 }
 
 resource "azurerm_eventgrid_system_topic" "data" {
@@ -46,30 +74,34 @@ resource "azurerm_eventgrid_system_topic" "data" {
 }
 
 resource "azurerm_role_assignment" "eventgrid_sb_sender" {
-  scope                = azurerm_servicebus_queue.pdf_events.id
+  scope                = azurerm_servicebus_queue.incoming_events.id
   role_definition_name = "Azure Service Bus Data Sender"
   principal_id         = azurerm_eventgrid_system_topic.data.identity[0].principal_id
 }
 
-resource "azurerm_eventgrid_system_topic_event_subscription" "pdf_created" {
-  name                 = "pdf-created-to-servicebus"
+resource "azurerm_eventgrid_system_topic_event_subscription" "incoming_created" {
+  name                 = "incoming-created-to-servicebus"
   system_topic         = azurerm_eventgrid_system_topic.data.name
   resource_group_name  = azurerm_resource_group.main.name
-  service_bus_queue_id = azurerm_servicebus_queue.pdf_events.id
+  service_bus_queue_id = azurerm_servicebus_queue.incoming_events.id
 
   included_event_types = ["Microsoft.Storage.BlobCreated"]
 
   subject_filter {
     subject_begins_with = "/blobServices/default/containers/${local.containers.incoming}/blobs/"
-    subject_ends_with   = ".pdf"
     case_sensitive      = false
   }
 
-  # Uniquement les blobs complètement écrits.
   advanced_filter {
+    # Uniquement les blobs complètement écrits.
     string_in {
       key    = "data.api"
       values = ["PutBlob", "PutBlockList", "CopyBlob", "FlushWithClose"]
+    }
+    # Uniquement les extensions prises en charge (PDF, et images si activées).
+    string_ends_with {
+      key    = "subject"
+      values = local.accepted_extensions
     }
   }
 
@@ -85,8 +117,40 @@ resource "azurerm_eventgrid_system_topic_event_subscription" "pdf_created" {
   depends_on = [time_sleep.rbac_propagation]
 }
 
+# ------------------------------------------------------------------ droits Service Bus
+
+# App principale : reçoit incoming-events et pdf-jobs ; envoie vers pdf-jobs et image-jobs.
 resource "azurerm_role_assignment" "func_sb_receiver" {
-  scope                = azurerm_servicebus_queue.pdf_events.id
+  for_each = {
+    incoming = azurerm_servicebus_queue.incoming_events.id
+    pdf      = azurerm_servicebus_queue.pdf_jobs.id
+  }
+  scope                = each.value
   role_definition_name = "Azure Service Bus Data Receiver"
   principal_id         = azurerm_user_assigned_identity.func.principal_id
+}
+
+resource "azurerm_role_assignment" "func_sb_sender" {
+  for_each = {
+    pdf   = azurerm_servicebus_queue.pdf_jobs.id
+    image = azurerm_servicebus_queue.image_jobs.id
+  }
+  scope                = each.value
+  role_definition_name = "Azure Service Bus Data Sender"
+  principal_id         = azurerm_user_assigned_identity.func.principal_id
+}
+
+# App images : reçoit image-jobs ; envoie vers pdf-jobs.
+resource "azurerm_role_assignment" "images_sb_receiver" {
+  count                = var.enable_image_processing ? 1 : 0
+  scope                = azurerm_servicebus_queue.image_jobs.id
+  role_definition_name = "Azure Service Bus Data Receiver"
+  principal_id         = azurerm_user_assigned_identity.func_images[0].principal_id
+}
+
+resource "azurerm_role_assignment" "images_sb_sender" {
+  count                = var.enable_image_processing ? 1 : 0
+  scope                = azurerm_servicebus_queue.pdf_jobs.id
+  role_definition_name = "Azure Service Bus Data Sender"
+  principal_id         = azurerm_user_assigned_identity.func_images[0].principal_id
 }

@@ -4,9 +4,12 @@
     "FUNCTIONS_WORKER_RUNTIME": "python",
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "ServiceBusConnection__fullyQualifiedNamespace": "<namespace>.servicebus.windows.net",
-    "SERVICEBUS_QUEUE_NAME": "pdf-events",
-
+    "INCOMING_QUEUE_NAME": "incoming-events",
+    "PDF_QUEUE_NAME": "pdf-jobs",
+    "IMAGE_QUEUE_NAME": "image-jobs",
     "STORAGE_ACCOUNT_URL": "https://<stdata>.blob.core.windows.net",
+    "INCOMING_CONTAINER": "incoming",
+    "WORK_CONTAINER": "work",
     "DOCINTEL_ENDPOINT": "https://<docintel>.cognitiveservices.azure.com/",
     "OPENAI_ENDPOINT": "https://<openai>.openai.azure.com/",
     "OPENAI_DEPLOYMENT": "pseudo-llm",
@@ -14,6 +17,7 @@
     "OPENAI_REASONING_EFFORT": "low",
     "LANGUAGE_ENDPOINT": "https://<language>.cognitiveservices.azure.com/",
     "KEY_VAULT_URL": "https://<kv>.vault.azure.net/",
-    "COSMOS_ENDPOINT": "https://<cosmos>.documents.azure.com:443/"
+    "COSMOS_ENDPOINT": "https://<cosmos>.documents.azure.com:443/",
+    "IMAGE_PROCESSING_ENABLED": "true"
   }
 }

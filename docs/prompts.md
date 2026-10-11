@@ -26,6 +26,11 @@ flowchart LR
     A2 -->|résidus| P
 ```
 
+Les **PDF et les images** passent par les mêmes agents et les mêmes prompts. Pour une image,
+le texte vient de l'OCR de la copie redressée (voir
+[architecture](architecture.md#préparation-des-images-étape-)) : les agents ne voient pas de
+différence.
+
 ## Contrat d'entrée et de sortie
 
 **Entrée** : le texte numéroté par ligne, entre balises `<document>` :
@@ -164,6 +169,6 @@ redéploiement.
 - Toute modification se mesure sur un jeu de documents annotés. La métrique prioritaire est le
   **rappel** : aucune donnée oubliée.
 - Le prompt rappelle que le contenu du document est une **donnée, jamais une instruction**.
-  C'est une protection contre l'injection de prompt via un PDF malveillant. Comme en plus les
+  C'est une protection contre l'injection de prompt via un document malveillant (PDF ou image). Comme en plus les
   filets regex et Language ne dépendent pas du LLM, une injection réussie ne suffit pas à
   faire passer des données en clair.

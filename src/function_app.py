@@ -1,38 +1,29 @@
-"""Point d'entrée Azure Functions : un message Service Bus = un événement BlobCreated Event Grid."""
+"""Point d'entrée unique des deux Function Apps (même code source, deux rôles).
 
-import logging
-import threading
+Le paramètre d'application FUNCTION_APP_ROLE, posé par Terraform, choisit les fonctions
+enregistrées (mécanisme des blueprints Azure Functions) :
+
+    main   (défaut) : route_incoming + pseudonymise_job   -> functions_main.py
+    images          : prepare_image                       -> functions_images.py (OpenCV)
+
+L'app principale n'importe jamais le code images : OpenCV n'y est ni chargé ni installé.
+"""
+
+import os
 
 import azure.functions as func
 
-from pseudo.config import Settings
-from pseudo.handler import handle_event
-from pseudo.runtime import Runtime, build_runtime
+ROLE_MAIN = "main"
+ROLE_IMAGES = "images"
 
 app = func.FunctionApp()
 
-_runtime: Runtime | None = None
-_lock = threading.Lock()
+role = os.environ.get("FUNCTION_APP_ROLE", ROLE_MAIN).strip().lower()
+if role == ROLE_IMAGES:
+    from functions_images import bp
+elif role == ROLE_MAIN:
+    from functions_main import bp
+else:
+    raise RuntimeError(f"FUNCTION_APP_ROLE inconnu : {role!r} (attendu : {ROLE_MAIN} ou {ROLE_IMAGES})")
 
-
-def get_runtime() -> Runtime:
-    """Clients Azure et clés chargés une fois par instance."""
-    global _runtime
-    with _lock:
-        if _runtime is None:
-            _runtime = build_runtime(Settings.from_env())
-        return _runtime
-
-
-@app.function_name("pseudonymise_pdf")
-@app.service_bus_queue_trigger(
-    arg_name="msg",
-    queue_name="%SERVICEBUS_QUEUE_NAME%",
-    connection="ServiceBusConnection",
-)
-def pseudonymise_pdf(msg: func.ServiceBusMessage) -> None:
-    logging.info("Message %s (tentative %s)", msg.message_id, msg.delivery_count)
-    # Une exception remet le message dans la file (retry) puis en dead-letter après
-    # max_delivery_count tentatives.
-    status = handle_event(msg.get_body(), get_runtime())
-    logging.info("Message %s traité : %s", msg.message_id, status)
+app.register_functions(bp)

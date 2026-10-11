@@ -1,0 +1,4 @@
+# Dépendances supplémentaires de la Function App images (étape de préparation).
+# Ajoutées à requirements.txt par scripts/deploy.ps1 lors de la publication de cette app.
+opencv-python-headless>=4.10
+numpy>=2.0

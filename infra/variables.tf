@@ -136,15 +136,52 @@ variable "delete_source_after_success" {
 }
 
 variable "incoming_retention_days" {
-  description = "Suppression automatique des fichiers d'entrée après N jours."
+  description = "Suppression automatique des fichiers déposés dans incoming/ après N jours."
   type        = number
   default     = 7
+}
+
+variable "work_retention_days" {
+  description = "Purge des fichiers intermédiaires (work/) d'un traitement interrompu, après N jours."
+  type        = number
+  default     = 1
 }
 
 variable "quarantine_retention_days" {
   description = "Suppression automatique des fichiers en quarantaine après N jours."
   type        = number
   default     = 30
+}
+
+# ---------------------------------------------------------------------------- Images
+
+variable "enable_image_processing" {
+  description = "Active le traitement des images (photos, scans JPEG/PNG/HEIC/TIFF...) : app images, filtre Event Grid."
+  type        = bool
+  default     = false
+}
+
+variable "image_extensions" {
+  description = "Extensions d'images transmises par Event Grid (si enable_image_processing)."
+  type        = list(string)
+  default     = [".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff", ".webp", ".bmp"]
+
+  validation {
+    condition     = alltrue([for e in var.image_extensions : can(regex("^\\.[a-z0-9]+$", e))])
+    error_message = "image_extensions : extensions en minuscules commençant par un point (ex. \".jpg\")."
+  }
+}
+
+variable "image_function_max_instances" {
+  description = "Nombre max d'instances de l'app images."
+  type        = number
+  default     = 5
+}
+
+variable "image_function_memory_mb" {
+  description = "Mémoire par instance de l'app images (photos de 12 Mpx et plus : 4096 recommandé)."
+  type        = number
+  default     = 4096
 }
 
 variable "pipeline_settings" {

@@ -23,8 +23,10 @@ locals {
     var.tags,
   )
 
+  # incoming : point d'entrée (les fichiers y restent) ; work : fichiers intermédiaires des images.
   containers = {
     incoming      = "incoming"
+    work          = "work"
     pseudonymised = "pseudonymised"
     quarantine    = "quarantine"
     config        = "config"
@@ -44,6 +46,15 @@ resource "azurerm_resource_group" "main" {
 # Identité managée de la Function : créée avant l'app pour que les rôles soient prêts au démarrage.
 resource "azurerm_user_assigned_identity" "func" {
   name                = "id-${local.base}-func"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = local.tags
+}
+
+# Identité de l'app images (étape de préparation), distincte : droits limités à son étape.
+resource "azurerm_user_assigned_identity" "func_images" {
+  count               = var.enable_image_processing ? 1 : 0
+  name                = "id-${local.base}-func-img"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   tags                = local.tags

@@ -1,6 +1,7 @@
 ﻿<#
 .SYNOPSIS
-  Déploiement complet : infrastructure (Terraform), prompts (Blob) et code (Azure Functions).
+  Déploiement complet : infrastructure (Terraform), prompts (Blob) et code des Function Apps
+  (app principale ; app images si enable_image_processing = true).
 .EXAMPLE
   ./scripts/deploy.ps1 -VarFile infra/terraform.tfvars -BackendConfig infra/backend.hcl
   ./scripts/deploy.ps1 -SkipInfra   # code + prompts uniquement
@@ -32,18 +33,37 @@ if (-not $SkipInfra) {
 
 $outputs = terraform "-chdir=infra" output "-json" | ConvertFrom-Json
 $functionApp = $outputs.function_app_name.value
+$imageApp = $outputs.image_function_app_name.value
 $storage = $outputs.data_storage_account_name.value
 
 & "$PSScriptRoot/publish-prompts.ps1" -StorageAccount $storage
 
-if (-not $SkipCode) {
-    Push-Location src
+function Publish-FunctionApp([string]$Name, [string]$Folder) {
+    Push-Location $Folder
     try {
-        # Build distant (pip install côté Azure) : les roues Linux de PyMuPDF sont récupérées sur place.
-        func azure functionapp publish $functionApp --python
-        if ($LASTEXITCODE) { throw "Publication de la Function échouée" }
+        # Build distant (pip install côté Azure) : les roues Linux (PyMuPDF, OpenCV) sont récupérées sur place.
+        func azure functionapp publish $Name --python
+        if ($LASTEXITCODE) { throw "Publication de $Name échouée" }
     } finally {
         Pop-Location
     }
 }
-Write-Host "Déploiement terminé. Déposer un PDF dans le container 'incoming' de $storage pour tester."
+
+if (-not $SkipCode) {
+    Publish-FunctionApp $functionApp "src"
+
+    if ($imageApp) {
+        # Même code source, avec en plus les dépendances OpenCV : copie dans un dossier temporaire
+        # dont requirements.txt = requirements.txt + requirements-images.txt.
+        $staging = Join-Path ([System.IO.Path]::GetTempPath()) "pseudo-images-$([guid]::NewGuid())"
+        try {
+            Copy-Item -Path "src" -Destination $staging -Recurse -Exclude ".venv", "__pycache__", "local.settings.json"
+            $requirements = (Get-Content "src/requirements.txt") + (Get-Content "src/requirements-images.txt")
+            Set-Content -Path (Join-Path $staging "requirements.txt") -Value $requirements -Encoding utf8
+            Publish-FunctionApp $imageApp $staging
+        } finally {
+            Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue
+        }
+    }
+}
+Write-Host "Déploiement terminé. Déposer un document dans le container 'incoming' de $storage pour tester."

@@ -2,11 +2,8 @@
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
-
 import pymupdf
 import pytest
-from azure.core.exceptions import ResourceNotFoundError
 
 from pseudo.classification import (
     STATUT_DESACTIVEE,
@@ -19,11 +16,12 @@ from pseudo.classification import (
 from pseudo.config import Settings
 from pseudo.detection.llm import ClassificationAgent
 from pseudo.doctypes import UNCLASSIFIED, DocTypeCatalogError, parse_doctypes
-from pseudo.handler import handle_event
+from pseudo.handler import handle_pdf_job
 from pseudo.models import Entity
 from pseudo.pipeline import run_pipeline
 from pseudo.prompts import LocalPromptSource, PromptRepository
 from pseudo.runtime import Runtime
+from fakes import FakeBlobService, MemoryStore, run_chain
 from test_pipeline import make_text_pdf, services
 
 PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
@@ -208,69 +206,18 @@ def test_disabled_classification_writes_without_type_folder(settings, monkeypatc
     assert (result.classification.statut, result.classification.dossier) == (STATUT_DESACTIVEE, "")
 
 
-# ---------------------------------------------------------------- handler : rangement et retraitement
-
-
-class FakeBlobService:
-    """Stockage Blob en mémoire : {(container, nom): {"data": bytes, "metadata": dict}}."""
-
-    def __init__(self):
-        self.blobs: dict[tuple[str, str], dict] = {}
-
-    def get_blob_client(self, container, name):
-        blobs = self.blobs
-        key = (container, name)
-
-        def delete_blob():
-            if key not in blobs:
-                raise ResourceNotFoundError("absent")
-            del blobs[key]
-
-        return SimpleNamespace(
-            exists=lambda: key in blobs,
-            get_blob_properties=lambda: SimpleNamespace(size=len(blobs[key]["data"])),
-            download_blob=lambda: SimpleNamespace(readall=lambda: blobs[key]["data"]),
-            delete_blob=delete_blob,
-        )
-
-    def get_container_client(self, container):
-        def upload_blob(name, data, overwrite=False, content_settings=None, metadata=None):
-            self.blobs[(container, name)] = {"data": data, "metadata": metadata or {}}
-
-        return SimpleNamespace(upload_blob=upload_blob)
-
-    def names(self, container):
-        return sorted(n for c, n in self.blobs if c == container)
-
-
-class MemoryStore:
-    def __init__(self):
-        self.traces = []
-        self.records = []
-
-    def save(self, records):
-        self.records += records
-
-    def save_trace(self, trace):
-        self.traces.append(trace)
-
-    def last_trace(self, document_id):
-        mine = [t for t in self.traces if t["documentId"] == document_id]
-        return mine[-1] if mine else None
-
-
-EVENT = json.dumps({"data": {"url": "https://st.blob.core.windows.net/incoming/lot1/facture.pdf"}})
+# ---------------------------------------------------------------- rangement et retraitement
 
 
 def make_runtime(settings, svc, blobs=None, store=None):
     blobs = blobs or FakeBlobService()
-    blobs.blobs[("incoming", "lot1/facture.pdf")] = {"data": make_text_pdf(), "metadata": {}}
+    blobs.put("incoming", "lot1/facture.pdf", make_text_pdf())
     return Runtime(settings=settings, services=svc, mapping_store=store or MemoryStore(), blob_service=blobs)
 
 
 def test_outputs_are_stored_in_the_type_folder(settings):
     runtime = make_runtime(settings, services(classifier=FakeClassifier(scores(("DENTAIRE", 0.92), ("OPTIQUE", 0.35)))))
-    assert handle_event(EVENT, runtime) == "ok"
+    assert run_chain(runtime, "lot1/facture.pdf")[0] == "ok"
     blobs = runtime.blob_service
     assert blobs.names("pseudonymised") == [
         "dentaire/lot1/facture.pdf",
@@ -279,27 +226,30 @@ def test_outputs_are_stored_in_the_type_folder(settings):
     ]
     meta = blobs.blobs[("pseudonymised", "dentaire/lot1/facture.pdf")]["metadata"]
     assert meta["document_type"] == "dentaire" and meta["document_types"] == "DENTAIRE:0.92;OPTIQUE:0.35"
-    report = json.loads(blobs.blobs[("pseudonymised", "dentaire/lot1/facture.rapport.json")]["data"])
+    report = json.loads(blobs.data("pseudonymised", "dentaire/lot1/facture.rapport.json"))
     assert report["classification"]["types"][0]["type"] == "DENTAIRE"
     trace = runtime.mapping_store.traces[-1]
     assert trace["classification"]["principal"] == "DENTAIRE"
     assert trace["sorties"][0] == "pseudonymised/dentaire/lot1/facture.pdf"
+    assert (trace["origin"], trace["stage"]) == ("pdf", "pseudonymisation")
+    assert ("incoming", "lot1/facture.pdf") in blobs.blobs  # l'entrée n'est pas déplacée
 
 
 def test_quarantine_is_also_stored_by_type(settings):
     svc = services(classifier=FakeClassifier(scores(("PSYCHOLOGIE", 0.9))))
     svc.detector.detect = lambda lines: [Entity("p1-l2", "INTROUVABLE", "NOM")]
     runtime = make_runtime(settings, svc)
-    assert handle_event(EVENT, runtime) == "quarantine"
+    assert run_chain(runtime, "lot1/facture.pdf")[0] == "quarantine"
     assert runtime.blob_service.names("quarantine") == ["psychologie/lot1/facture.pdf", "psychologie/lot1/facture.pdf.motif.json"]
-    reason = json.loads(runtime.blob_service.blobs[("quarantine", "psychologie/lot1/facture.pdf.motif.json")]["data"])
+    reason = json.loads(runtime.blob_service.data("quarantine", "psychologie/lot1/facture.pdf.motif.json"))
     assert reason["classification"]["principal"] == "PSYCHOLOGIE" and "entites_non_localisees" in reason["motifs"]
+    assert reason["etape"] == "pseudonymisation"
 
 
 def test_reprocessing_with_another_type_removes_previous_outputs(settings):
     blobs, store = FakeBlobService(), MemoryStore()
-    handle_event(EVENT, make_runtime(settings, services(classifier=FakeClassifier(scores(("DENTAIRE", 0.9)))), blobs, store))
-    handle_event(EVENT, make_runtime(settings, services(classifier=FakeClassifier(scores(("OPTIQUE", 0.9)))), blobs, store))
+    run_chain(make_runtime(settings, services(classifier=FakeClassifier(scores(("DENTAIRE", 0.9)))), blobs, store), "lot1/facture.pdf")
+    run_chain(make_runtime(settings, services(classifier=FakeClassifier(scores(("OPTIQUE", 0.9)))), blobs, store), "lot1/facture.pdf")
     assert all(n.startswith("optique/") for n in blobs.names("pseudonymised"))
     assert len(blobs.names("pseudonymised")) == 3
 
@@ -307,10 +257,18 @@ def test_reprocessing_with_another_type_removes_previous_outputs(settings):
 def test_reprocessing_into_quarantine_removes_previous_pseudonymised_outputs(settings):
     blobs, store = FakeBlobService(), MemoryStore()
     classifier = FakeClassifier(scores(("KINESITHERAPIE", 0.9)))
-    handle_event(EVENT, make_runtime(settings, services(classifier=classifier), blobs, store))
+    run_chain(make_runtime(settings, services(classifier=classifier), blobs, store), "lot1/facture.pdf")
     svc = services(classifier=classifier)
     svc.detector.detect = lambda lines: [Entity("p1-l2", "INTROUVABLE", "NOM")]
-    handle_event(EVENT, make_runtime(settings, svc, blobs, store))
+    run_chain(make_runtime(settings, svc, blobs, store), "lot1/facture.pdf")
     assert blobs.names("pseudonymised") == []
     assert blobs.names("quarantine")[0] == "kinesitherapie/lot1/facture.pdf"
     assert ("incoming", "lot1/facture.pdf") in blobs.blobs  # l'entrée n'est jamais supprimée par le nettoyage
+
+
+def test_redelivered_job_is_not_processed_twice(settings):
+    runtime = make_runtime(settings, services(classifier=FakeClassifier(scores(("DENTAIRE", 0.9)))))
+    status, messages = run_chain(runtime, "lot1/facture.pdf")
+    assert status == "ok"
+    assert handle_pdf_job(messages[-1], runtime) == "already_processed"
+    assert len(runtime.mapping_store.traces) == 1

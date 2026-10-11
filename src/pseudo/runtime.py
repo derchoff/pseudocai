@@ -16,6 +16,7 @@ from .detection.llm import (
 )
 from .extraction import DocumentIntelligenceOcr
 from .mapping_store import CosmosMappingStore, MappingStore, NullMappingStore
+from .outputs import SimpleStorageContext
 from .pipeline import Services
 from .prompts import BlobPromptSource, LocalPromptSource, PromptRepository, PromptSource
 from .pseudonymizer import Pseudonymizer, ValueCipher
@@ -51,6 +52,33 @@ def load_keys(settings: Settings, cred) -> tuple[bytes, bytes]:
     return hmac_key, enc_key
 
 
+def _blob_service(settings: Settings, cred):
+    if not settings.storage_account_url:
+        return None
+    from azure.storage.blob import BlobServiceClient
+
+    return BlobServiceClient(settings.storage_account_url, credential=cred)
+
+
+def _mapping_store(settings: Settings, cred) -> MappingStore:
+    if not settings.cosmos_endpoint:
+        return NullMappingStore()
+    from azure.cosmos import CosmosClient
+
+    database = CosmosClient(settings.cosmos_endpoint, credential=cred).get_database_client(settings.cosmos_database)
+    return CosmosMappingStore(database, settings.cosmos_mapping_container, settings.cosmos_trace_container)
+
+
+def build_storage_context(settings: Settings) -> SimpleStorageContext:
+    """Contexte léger (stockage + traces) pour le routage et la préparation des images :
+    ni Azure OpenAI, ni Document Intelligence, ni clés de pseudonymisation."""
+    cred = credential()
+    blob_service = _blob_service(settings, cred)
+    if blob_service is None:
+        raise RuntimeError("STORAGE_ACCOUNT_URL requis")
+    return SimpleStorageContext(settings=settings, blob_service=blob_service, mapping_store=_mapping_store(settings, cred))
+
+
 def build_runtime(
     settings: Settings,
     *,
@@ -61,11 +89,7 @@ def build_runtime(
 ) -> Runtime:
     cred = credential()
 
-    blob_service = None
-    if settings.storage_account_url:
-        from azure.storage.blob import BlobServiceClient
-
-        blob_service = BlobServiceClient(settings.storage_account_url, credential=cred)
+    blob_service = _blob_service(settings, cred)
 
     source: PromptSource
     if prompts_dir:
@@ -156,16 +180,6 @@ def build_runtime(
     )
 
     if mapping_store is None:
-        if settings.cosmos_endpoint:
-            from azure.cosmos import CosmosClient
-
-            database = CosmosClient(settings.cosmos_endpoint, credential=cred).get_database_client(
-                settings.cosmos_database
-            )
-            mapping_store = CosmosMappingStore(
-                database, settings.cosmos_mapping_container, settings.cosmos_trace_container
-            )
-        else:
-            mapping_store = NullMappingStore()
+        mapping_store = _mapping_store(settings, cred)
 
     return Runtime(settings=settings, services=services, mapping_store=mapping_store, blob_service=blob_service)

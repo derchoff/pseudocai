@@ -1,9 +1,11 @@
-"""Exécution locale du pipeline sur un PDF (mise au point des prompts, recette).
+"""Exécution locale de la chaîne sur un PDF ou une image (mise au point des prompts, recette).
 
 Utilise les vrais services Azure (az login) mais lit les prompts dans le dossier local et
-n'écrit rien dans Cosmos DB par défaut.
+n'écrit rien dans Cosmos DB par défaut. Pour une image, l'étape de préparation est exécutée en
+mémoire (nécessite les dépendances de requirements-images.txt).
 
     python cli.py document.pdf --out ./sortie --settings local.settings.json
+    python cli.py photo.jpg --out ./sortie --settings local.settings.json
 """
 
 from __future__ import annotations
@@ -14,17 +16,21 @@ import logging
 import os
 from pathlib import Path
 
+from types import SimpleNamespace
+
 from pseudo.config import Settings
+from pseudo.formats import PDF, format_from_name, is_image
+from pseudo.jobs import ORIGIN_IMAGE, Job, PreparedImage
 from pseudo.mapping_store import JsonFileMappingStore, NullMappingStore
-from pseudo.pipeline import run_pipeline
+from pseudo.pipeline import PipelineInput, run_pipeline
 from pseudo.runtime import build_runtime
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Pseudonymise un PDF localement")
-    parser.add_argument("pdf", type=Path)
+    parser = argparse.ArgumentParser(description="Pseudonymise localement un PDF ou une image")
+    parser.add_argument("document", type=Path)
     parser.add_argument("--out", type=Path, default=Path("sortie"))
     parser.add_argument("--settings", type=Path, help="local.settings.json dont les 'Values' sont chargées")
     parser.add_argument("--prompts-dir", type=Path, default=ROOT / "prompts")
@@ -52,11 +58,23 @@ def main() -> int:
         enable_verification=not args.no_verification,
     )
 
-    result = run_pipeline(args.pdf.read_bytes(), settings, runtime.services)
+    data = args.document.read_bytes()
+    fmt = format_from_name(args.document.name)
+    if fmt == PDF:
+        pipeline_input = PipelineInput(pdf=data, source={"origine": "pdf", "format": fmt})
+    elif is_image(fmt):
+        pipeline_input = _prepare_image_in_memory(data, fmt, settings, runtime.services.ocr)
+        if pipeline_input is None:
+            return 2
+    else:
+        print("Format non pris en charge")
+        return 2
+
+    result = run_pipeline(pipeline_input, settings, runtime.services)
     args.out.mkdir(parents=True, exist_ok=True)
-    stem = args.pdf.stem
-    if result.pdf:
-        (args.out / f"{stem}.pseudonymise.pdf").write_bytes(result.pdf)
+    stem = args.document.stem
+    if result.output:
+        (args.out / f"{stem}.pseudonymise{args.document.suffix}").write_bytes(result.output)
     if result.text:
         (args.out / f"{stem}.pseudonymise.txt").write_text(result.text, encoding="utf-8")
     (args.out / f"{stem}.rapport.json").write_text(
@@ -70,6 +88,33 @@ def main() -> int:
         print(f"Type : {classification.principal} (dossier « {classification.dossier or '-'} » ; {scores})")
     print(f"Statut : {result.status} {result.reasons or ''} -> {args.out}")
     return 0 if result.status == "ok" else 2
+
+
+def _prepare_image_in_memory(data: bytes, fmt: str, settings: Settings, ocr) -> PipelineInput | None:
+    """Étape 2 exécutée en local : les fichiers « work/ » restent en mémoire."""
+    from pseudo.images.prepare import prepare_image
+    from pseudo.prepared_image import load_image_input
+
+    artifacts = prepare_image(data, fmt, settings)
+    if artifacts.reasons:
+        print(f"Image refusée à la préparation : {artifacts.reasons}")
+        return None
+    files = {"render.pdf": artifacts.render_pdf, "transforms.json": artifacts.transforms}
+    if artifacts.ocr_pdf:
+        files["ocr.pdf"] = artifacts.ocr_pdf
+    work = SimpleNamespace(
+        get_blob_client=lambda name: SimpleNamespace(
+            download_blob=lambda: SimpleNamespace(readall=lambda: files[name])
+        )
+    )
+    job = Job.new("local://" + fmt, "local", "document", fmt, ORIGIN_IMAGE)
+    job.prepared = PreparedImage(
+        render_pdf="render.pdf",
+        transforms="transforms.json",
+        ocr_pdf="ocr.pdf" if artifacts.ocr_pdf else None,
+        preparation=artifacts.preparation,
+    )
+    return load_image_input(job, data, work, ocr, settings)
 
 
 if __name__ == "__main__":

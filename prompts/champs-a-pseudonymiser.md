@@ -33,7 +33,7 @@
 Principe général : **en cas de doute, on pseudonymise**. Un faux positif (masquage en trop)
 est acceptable ; un faux négatif (donnée personnelle laissée en clair) ne l'est pas.
 
-Le texte fourni provient d'une extraction PDF ou d'un OCR : il peut contenir des erreurs
+Le texte fourni provient d'une extraction PDF ou d'un OCR (scan, photo) : il peut contenir des erreurs
 de reconnaissance (`O`↔`0`, `l`/`I`↔`1`, `S`↔`5`, `B`↔`8`), des espaces parasites au milieu
 des mots ou des nombres, des retours à la ligne arbitraires et des mots collés à leur libellé
 (`Nom:DUPONT`).

@@ -95,6 +95,23 @@ resource "azurerm_subnet" "func" {
   }
 }
 
+# Intégration VNet de l'app images : un sous-réseau délégué par app Flex Consumption.
+resource "azurerm_subnet" "func_images" {
+  count                = local.private && var.enable_image_processing ? 1 : 0
+  name                 = "snet-func-img"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main[0].name
+  address_prefixes     = [cidrsubnet(var.vnet_address_space, 2, 2)]
+
+  delegation {
+    name = "flex-consumption"
+    service_delegation {
+      name    = "Microsoft.App/environments"
+      actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
+    }
+  }
+}
+
 resource "azurerm_subnet" "endpoints" {
   count                = local.private ? 1 : 0
   name                 = "snet-pe"

@@ -1,56 +1,70 @@
-# Service de pseudonymisation de PDF sur Azure
+# Service de pseudonymisation de documents sur Azure
 
-Les PDF déposés dans un compte de stockage sont automatiquement pseudonymisés.
+Les documents déposés dans un compte de stockage, **PDF ou images**, sont automatiquement
+pseudonymisés, classés par type et rangés.
+
+Les images peuvent être des photos de smartphone ou des scans : JPEG, PNG, HEIC, TIFF, WebP, BMP.
 
 Données traitées : **nom, prénom, date de naissance, NIR (n° de sécurité sociale), e-mail,
-adresse postale, téléphone**.
+adresse postale, téléphone**. La liste se configure dans
+[prompts/champs-a-pseudonymiser.md](prompts/champs-a-pseudonymiser.md).
 
 Chaque valeur est remplacée par un jeton stable (`[NOM_3FA94C0B21]`). La table de
 correspondance chiffrée permet une ré-identification contrôlée. Il s'agit donc d'une
 pseudonymisation au sens du RGPD, pas d'une anonymisation.
 
 ```
-Storage (incoming/) ─► Event Grid ─► Service Bus ─► Azure Function (Python)
-                                                     ├─ PyMuPDF (couche texte) + OCR de toutes les pages
-                                                     ├─ Agent IA de détection    (Azure OpenAI + prompt)
-                                                     ├─ Filets : regex + Azure AI Language
-                                                     ├─ Agent IA de vérification (Azure OpenAI + prompt)
-                                                     ├─ Agent IA de classification (type de document)
-                                                     └─ Caviardage PDF ─► pseudonymised/<type>/ | quarantine/<type>/
+incoming/ ─► Event Grid ─► [incoming-events] ─► ① Routage (Function principale)
+                                                   │ format déduit de l'extension     
+                                                   ├─► [pdf-jobs] ──────────────────────────────┐
+                                                   └─► [image-jobs] ─► ② Préparation des images │
+                                                                       (Function images, OpenCV) │
+                                                                       work/<job>/ ─► [pdf-jobs] ┤
+                                                                                                 ▼
+                         ③ Pseudonymisation (Function principale) : OCR, agents IA de détection
+                           et de vérification, filets regex + Language, jetons, classification,
+                           caviardage ─► pseudonymised/<type>/  |  quarantine/<type>/
 ```
 
-Périmètre actuel : **PDF uniquement**, qu'ils soient natifs ou scannés. Toutes les pages
-passent par l'OCR, pour détecter aussi le texte contenu dans les images (logo d'un praticien,
-tampon d'un artisan...). Les photos de
-smartphone seront traitées dans une seconde phase (voir [architecture](docs/architecture.md#évolutions)).
+- **Le document ne bouge pas** : il reste dans `incoming/`. Seuls des **messages** (jobs)
+  passent d'une étape à l'autre, avec un identifiant de corrélation.
+- **Le format est déduit uniquement de l'extension.** Un fichier dont le contenu ne correspond
+  pas à son extension (image renommée en `.pdf`…) n'est pas réinterprété : il part en quarantaine.
+- **Un PDF**, natif ou scanné, est pseudonymisé directement. Toutes les pages passent par
+  l'OCR, pour lire aussi le texte des images (logo d'un praticien, tampon d'un artisan…).
+- **Une image** est d'abord préparée par une Function App dédiée :
+  - orientation EXIF et contrôles qualité (flou, résolution) ;
+  - copie redressée et améliorée, réservée à l'OCR.
 
-Chaque document est aussi **classé par type** (dentaire, optique, kinésithérapie, psychologie…)
-et rangé dans le sous-dossier correspondant, y compris en quarantaine. Les types se déclarent
-dans [prompts/types-documents.md](prompts/types-documents.md), sans redéploiement (voir
-[architecture](docs/architecture.md#classification-du-type-de-document)).
+  La sortie garde le **format et le cadrage d'origine**, sans métadonnées EXIF. Le traitement
+  des images s'active par Terraform (`enable_image_processing`).
+- **Chaque document est classé par type** (dentaire, optique, kinésithérapie, psychologie…) et
+  rangé dans le sous-dossier correspondant, y compris en quarantaine. Les types se déclarent
+  dans [prompts/types-documents.md](prompts/types-documents.md), sans redéploiement.
 
 ## Arborescence
 
 | Dossier | Contenu |
 |---|---|
-| [docs/](docs/) | [Architecture](docs/architecture.md) (diagrammes Mermaid), [déploiement](docs/deploiement.md), [exploitation](docs/exploitation.md), [prompts](docs/prompts.md) |
+| [docs/](docs/) | [Architecture](docs/architecture.md) (diagrammes Mermaid), [déploiement](docs/deploiement.md) (dont l'[inventaire des ressources Azure](docs/deploiement.md#ressources-déployées)), [exploitation](docs/exploitation.md), [prompts](docs/prompts.md) |
 | [prompts/](prompts/) | Référentiels des champs et des types de document, prompts des trois agents IA |
-| [infra/](infra/) | Terraform (azurerm 5.x) |
-| [src/](src/) | Azure Function Python + package `pseudo` + outils `cli.py` / `reidentify.py` |
+| [infra/](infra/) | Terraform (azurerm 5.x), module `flex_function` partagé par les deux Function Apps |
+| [src/](src/) | `function_app.py` (point d'entrée des deux apps, choisi par `FUNCTION_APP_ROLE`), `functions_main.py` (routage + pseudonymisation), `functions_images.py` (préparation des images), package `pseudo`, outils `cli.py` / `reidentify.py` |
 | [tests/](tests/) | Tests unitaires et de bout en bout (sans appel Azure) |
 | [scripts/](scripts/) | Déploiement PowerShell |
-| [exemples/](exemples/) | Factures fictives de test (dentiste, opticien, psychologue, kiné, version scannée) et leur générateur |
+| [exemples/](exemples/) | Factures fictives (dentiste, opticien, psychologue, kiné), photos et scans fictifs, et leurs générateurs |
 
 ## Démarrage rapide
 
 ```powershell
-# 1. Infrastructure + prompts + code
+# 1. Infrastructure + prompts + code (les deux Function Apps si enable_image_processing = true)
 copy infra/terraform.tfvars.example infra/terraform.tfvars   # puis éditer
 copy infra/backend.hcl.example infra/backend.hcl             # puis éditer
 ./scripts/deploy.ps1
 
-# 2. Test
-./scripts/upload-test.ps1 -Path ./mon-document.pdf
+# 2. Test : déposer un document dans incoming/
+./scripts/upload-test.ps1 -Path ./exemples/facture-dentiste.pdf
+./scripts/upload-test.ps1 -Path ./exemples/photo-facture-dentiste.jpg
 ```
 
 Tests locaux (sans Azure) :
@@ -59,10 +73,11 @@ Tests locaux (sans Azure) :
 uv run --python 3.12 --with-requirements requirements-dev.txt pytest -q tests
 ```
 
-Mise au point des prompts sur un PDF réel, depuis un poste connecté avec `az login` :
+Mise au point des prompts sur un document réel (PDF ou image), depuis un poste connecté avec
+`az login` :
 
 ```bash
-cd src && python cli.py ../exemple.pdf --out ../sortie --settings local.settings.json
+cd src && python cli.py ../exemples/photo-facture-dentiste.jpg --out ../sortie --settings local.settings.json
 ```
 
 ## Licence

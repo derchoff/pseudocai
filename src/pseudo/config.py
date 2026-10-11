@@ -32,7 +32,8 @@ def _float(name: str, default: float) -> float:
 class Settings:
     # Stockage
     storage_account_url: str | None
-    input_container: str
+    incoming_container: str  # point d'entrée : les fichiers y sont déposés et y restent
+    work_container: str  # fichiers intermédiaires (images préparées), purgés en fin de traitement
     output_container: str
     quarantine_container: str
     config_container: str
@@ -89,12 +90,23 @@ class Settings:
     classification_max_chars: int
     unclassified_folder: str
 
+    # Images (étape de préparation)
+    image_processing_enabled: bool
+    image_extensions: tuple[str, ...]
+    image_max_pixels: int
+    image_min_short_side: int
+    image_blur_threshold: float
+    image_enhance_for_ocr: bool
+    image_render_dpi: int
+    image_output_quality: int
+
     @classmethod
     def from_env(cls) -> "Settings":
         temperature = _env("OPENAI_TEMPERATURE")
         return cls(
             storage_account_url=_env("STORAGE_ACCOUNT_URL"),
-            input_container=_env("INPUT_CONTAINER", "incoming"),
+            incoming_container=_env("INCOMING_CONTAINER", "incoming"),
+            work_container=_env("WORK_CONTAINER", "work"),
             output_container=_env("OUTPUT_CONTAINER", "pseudonymised"),
             quarantine_container=_env("QUARANTINE_CONTAINER", "quarantine"),
             config_container=_env("CONFIG_CONTAINER", "config"),
@@ -146,4 +158,16 @@ class Settings:
             classification_secondary_min_confidence=_float("CLASSIFICATION_SECONDARY_MIN_CONFIDENCE", 0.3),
             classification_max_chars=_int("CLASSIFICATION_MAX_CHARS", 6000),
             unclassified_folder=_env("UNCLASSIFIED_FOLDER", "non-classe"),
+            image_processing_enabled=_bool("IMAGE_PROCESSING_ENABLED", False),
+            image_extensions=tuple(
+                e.strip().lower()
+                for e in _env("IMAGE_EXTENSIONS", ".jpg,.jpeg,.png,.heic,.heif,.tif,.tiff,.webp,.bmp").split(",")
+                if e.strip()
+            ),
+            image_max_pixels=_int("IMAGE_MAX_PIXELS", 50_000_000),
+            image_min_short_side=_int("IMAGE_MIN_SHORT_SIDE", 1000),
+            image_blur_threshold=_float("IMAGE_BLUR_THRESHOLD", 60.0),
+            image_enhance_for_ocr=_bool("IMAGE_ENHANCE_FOR_OCR", True),
+            image_render_dpi=_int("IMAGE_RENDER_DPI", 300),
+            image_output_quality=_int("IMAGE_OUTPUT_QUALITY", 90),
         )

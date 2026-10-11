@@ -18,6 +18,9 @@ class Word:
     text: str
     rect: Rect  # x0, y0, x1, y1 en points PDF
     confidence: float = 1.0
+    # Quadrilatère (x1, y1, ..., x4, y4) en points, quand il est connu (OCR). Sur une photo prise de
+    # biais, il épouse le mot alors que le rectangle englobant déborderait sur ses voisins.
+    quad: tuple[float, ...] | None = None
     start: int = 0  # position dans Line.text
     end: int = 0
 

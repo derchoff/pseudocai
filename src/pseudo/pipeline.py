@@ -79,26 +79,51 @@ class Services:
     classifier: Classifier | None = None
 
 
+Renderer = Callable[[bytes, DocumentContent, list[Span], int], bytes]
+
+
+@dataclass
+class PipelineInput:
+    """Document à traiter. Le pipeline ne connaît que des PDF ; une image arrive ici déjà emballée
+    en PDF par l'étape de préparation, avec son OCR et son rendu dédiés (voir prepared_image.py)."""
+
+    pdf: bytes  # PDF analysé (PDF d'origine, ou image d'origine emballée en PDF)
+    ocr: OcrEngine | None = None  # remplace services.ocr (ex. OCR de la copie redressée d'une image)
+    force_ocr: bool = False  # True pour une image : toutes les pages sont des « scans »
+    renderer: Renderer | None = None  # produit le document de sortie (défaut : PDF caviardé)
+    source: dict = field(default_factory=dict)  # origine et préparation, ajoutées au rapport
+
+
 @dataclass
 class PipelineResult:
     status: str  # "ok" | "quarantine"
     reasons: list[str] = field(default_factory=list)
-    pdf: bytes | None = None
+    output: bytes | None = None  # document pseudonymisé, au format produit par le renderer
     text: str | None = None
     records: list[MappingRecord] = field(default_factory=list)
     report: dict = field(default_factory=dict)
     classification: Classification | None = None
 
 
-def run_pipeline(pdf_bytes: bytes, settings: Settings, services: Services) -> PipelineResult:
+def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Services) -> PipelineResult:
+    if isinstance(source, bytes):
+        source = PipelineInput(pdf=source)
+    pdf_bytes = source.pdf
     started = time.monotonic()
-    report: dict = {"pipeline_version": "0.1.0"}
+    report: dict = {"pipeline_version": "0.2.0"}
+    if source.source:
+        report["source"] = source.source
     reasons: list[str] = []
 
     # 1. Ouverture et contrôles préalables -------------------------------------------------
     try:
         doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     except Exception:  # noqa: BLE001 - tout PDF illisible part en quarantaine
+        return _rejected("pdf_illisible", report, settings)
+    if not doc.is_pdf:
+        # MuPDF reconnaît d'autres formats même en mode « pdf » (une image renommée en .pdf
+        # s'ouvrirait) : un contenu non conforme à l'extension n'est jamais réinterprété.
+        doc.close()
         return _rejected("pdf_illisible", report, settings)
     if doc.needs_pass:
         return _rejected("pdf_chiffre", report, settings)
@@ -116,10 +141,10 @@ def run_pipeline(pdf_bytes: bytes, settings: Settings, services: Services) -> Pi
     pages = extract_document(
         pdf_bytes,
         doc,
-        services.ocr,
+        source.ocr or services.ocr,
         min_native_chars=settings.min_native_chars,
         image_coverage_threshold=settings.image_coverage_ocr_threshold,
-        force_ocr=settings.force_ocr,
+        force_ocr=settings.force_ocr or source.force_ocr,
         ocr_native_pages=settings.ocr_native_pages,
     )
     doc.close()
@@ -199,7 +224,8 @@ def run_pipeline(pdf_bytes: bytes, settings: Settings, services: Services) -> Pi
     report["classification"] = classification.to_dict()
 
     # 6. Rendu --------------------------------------------------------------------------------
-    pdf = render_pdf(pdf_bytes, content, spans, dpi=settings.ocr_render_dpi)
+    renderer = source.renderer or render_pdf
+    output = renderer(pdf_bytes, content, spans, settings.ocr_render_dpi)
     report["duree_secondes"] = round(time.monotonic() - started, 2)
 
     status = "quarantine" if reasons else "ok"
@@ -208,7 +234,7 @@ def run_pipeline(pdf_bytes: bytes, settings: Settings, services: Services) -> Pi
     return PipelineResult(
         status=status,
         reasons=reasons,
-        pdf=pdf,
+        output=output,
         text=text,
         records=records,
         report=report,
