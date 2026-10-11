@@ -58,11 +58,15 @@ class OcrEngine(Protocol):
 
 
 class DocumentIntelligenceOcr:
-    """OCR des pages scannées via Azure AI Document Intelligence (modèle prebuilt-read)."""
+    """OCR des pages scannées via Azure AI Document Intelligence (modèle prebuilt-read).
 
-    def __init__(self, client, model_id: str = "prebuilt-read"):
+    Le modèle signale aussi l'écriture manuscrite (result.styles : is_handwritten + confiance,
+    sur des plages du texte) : les mots concernés sont marqués Word.handwritten."""
+
+    def __init__(self, client, model_id: str = "prebuilt-read", handwriting_min_confidence: float = 0.5):
         self._client = client
         self._model_id = model_id
+        self._handwriting_min_confidence = handwriting_min_confidence
 
     def ocr(self, pdf_bytes: bytes, doc: pymupdf.Document, page_indexes: list[int]) -> list[PageContent]:
         from azure.ai.documentintelligence.models import AnalyzeDocumentRequest
@@ -74,10 +78,21 @@ class DocumentIntelligenceOcr:
             self._model_id, AnalyzeDocumentRequest(bytes_source=pdf_bytes), pages=pages_arg
         )
         result = poller.result()
-        return [build_ocr_page(doc[p.page_number - 1], p) for p in (result.pages or [])]
+        handwritten = handwritten_ranges(result, self._handwriting_min_confidence)
+        return [build_ocr_page(doc[p.page_number - 1], p, handwritten) for p in (result.pages or [])]
 
 
-def build_ocr_page(page: pymupdf.Page, di_page) -> PageContent:
+def handwritten_ranges(result, min_confidence: float) -> list[tuple[int, int]]:
+    """Plages (début, fin) du texte que Document Intelligence juge manuscrit."""
+    ranges: list[tuple[int, int]] = []
+    for style in getattr(result, "styles", None) or []:
+        confidence = style.confidence if style.confidence is not None else 1.0
+        if style.is_handwritten and confidence >= min_confidence:
+            ranges += [(s.offset, s.offset + s.length) for s in (style.spans or [])]
+    return ranges
+
+
+def build_ocr_page(page: pymupdf.Page, di_page, handwritten: list[tuple[int, int]] | None = None) -> PageContent:
     """Convertit une page Document Intelligence en PageContent (coordonnées affichées, en points)."""
     sx = page.rect.width / di_page.width if di_page.width else 1.0
     sy = page.rect.height / di_page.height if di_page.height else 1.0
@@ -92,11 +107,11 @@ def build_ocr_page(page: pymupdf.Page, di_page) -> PageContent:
                 continue
             if any(a <= w.span.offset < b for a, b in ranges):
                 used.add(i)
-                words.append(_di_word(w, sx, sy))
+                words.append(_di_word(w, sx, sy, handwritten))
         if words:
             lines.append(Line.build(f"p{page.number + 1}-l{n}", page.number, words, source="ocr"))
     # Mots hors de toute ligne (rare) : on les garde dans une ligne dédiée pour ne rien perdre.
-    orphans = [_di_word(w, sx, sy) for i, w in enumerate(di_words) if i not in used]
+    orphans = [_di_word(w, sx, sy, handwritten) for i, w in enumerate(di_words) if i not in used]
     if orphans:
         lines.append(Line.build(f"p{page.number + 1}-l{len(lines) + 1000}", page.number, orphans, source="ocr"))
     confidences = [w.confidence for line in lines for w in line.words]
@@ -108,13 +123,14 @@ def build_ocr_page(page: pymupdf.Page, di_page) -> PageContent:
     )
 
 
-def _di_word(w, sx: float, sy: float) -> Word:
+def _di_word(w, sx: float, sy: float, handwritten: list[tuple[int, int]] | None = None) -> Word:
     poly = list(w.polygon or [])
     xs, ys = poly[0::2], poly[1::2]
     rect = (min(xs) * sx, min(ys) * sy, max(xs) * sx, max(ys) * sy) if xs else (0, 0, 0, 0)
     quad = tuple(v * (sx if k % 2 == 0 else sy) for k, v in enumerate(poly)) if len(poly) == 8 else None
     conf = w.confidence if w.confidence is not None else 1.0
-    return Word(text=w.content, rect=rect, confidence=conf, quad=quad)
+    manuscript = w.span is not None and any(a <= w.span.offset < b for a, b in handwritten or [])
+    return Word(text=w.content, rect=rect, confidence=conf, quad=quad, handwritten=manuscript)
 
 
 def image_text_lines(native: PageContent, ocr_page: PageContent, overlap_threshold: float = 0.5) -> list[Line]:

@@ -57,6 +57,7 @@ module "function_main" {
       # function_app.py n'enregistre que route_incoming et pseudonymise_job.
       FUNCTION_APP_ROLE              = "main"
       PSEUDO_OUTPUT_MODE             = var.pseudo_output_mode
+      HANDWRITING_POLICY             = var.handwriting_policy
       ServiceBusConnection__clientId = azurerm_user_assigned_identity.func.client_id
       PROMPTS_PREFIX                 = "prompts/"
 

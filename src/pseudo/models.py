@@ -23,6 +23,7 @@ class Word:
     quad: tuple[float, ...] | None = None
     start: int = 0  # position dans Line.text
     end: int = 0
+    handwritten: bool = False  # mot manuscrit selon l'OCR (styles Document Intelligence)
 
 
 @dataclass

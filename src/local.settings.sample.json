@@ -19,6 +19,7 @@
     "KEY_VAULT_URL": "https://<kv>.vault.azure.net/",
     "COSMOS_ENDPOINT": "https://<cosmos>.documents.azure.com:443/",
     "IMAGE_PROCESSING_ENABLED": "true",
-    "PSEUDO_OUTPUT_MODE": "substitution"
+    "PSEUDO_OUTPUT_MODE": "substitution",
+    "HANDWRITING_POLICY": "quarantaine"
   }
 }

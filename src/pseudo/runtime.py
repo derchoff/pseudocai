@@ -159,7 +159,9 @@ def build_runtime(
         from azure.ai.documentintelligence import DocumentIntelligenceClient
 
         ocr = DocumentIntelligenceOcr(
-            DocumentIntelligenceClient(settings.docintel_endpoint, cred), settings.docintel_model
+            DocumentIntelligenceClient(settings.docintel_endpoint, cred),
+            settings.docintel_model,
+            handwriting_min_confidence=settings.handwriting_min_confidence,
         )
 
     # Azure AI Language (filet de sécurité) ---------------------------------------------------

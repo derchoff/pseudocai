@@ -153,6 +153,7 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 | `openai_capacity` | `100` (k tokens/min) | Dépend du quota et du volume de documents. |
 | `openai_reasoning_effort` | `low` | Compromis coût / qualité. Laisser vide pour un modèle non « raisonnement ». |
 | `pseudo_output_mode` | `substitution` | Contenu du document publié : valeurs fictives réalistes (`substitution`) ou jetons (`jetons`). Voir [architecture](architecture.md#valeurs-fictives-mode-substitution). |
+| `handwriting_policy` | `quarantaine` | Document contenant de l'écriture manuscrite : revue humaine (`quarantaine`, sans appel aux agents IA) ou circuit normal (`traiter`). Voir [architecture](architecture.md#écriture-manuscrite). |
 | `enable_language_pii` | `true` | Filet de sécurité optionnel, avec un coût supplémentaire. |
 | `enable_private_networking` | `false` | Le réseau privé est recommandé en production, mais plus coûteux (Service Bus Premium) et plus complexe à opérer. |
 | `allowed_ip_ranges` | `[]` | IP du poste ou du runner CI, autorisées quand l'accès public est fermé. |
@@ -199,6 +200,8 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 | `LANGUAGE_PII_CATEGORIES` | `Person:PERSONNE,...` | Correspondance entre les catégories Azure AI Language et les types internes. |
 | `PROMPT_CACHE_SECONDS` | 300 | Délai de rechargement des prompts. |
 | `PSEUDO_OUTPUT_MODE` | substitution | Posé par la variable `pseudo_output_mode` (ne pas le passer dans `pipeline_settings`). |
+| `HANDWRITING_POLICY` | quarantaine | Posé par la variable `handwriting_policy` (ne pas le passer dans `pipeline_settings`). |
+| `HANDWRITING_MIN_CONFIDENCE` | 0.5 | Confiance minimale de Document Intelligence pour considérer un passage comme manuscrit. |
 | `CLASSIFICATION_ENABLED` | true | Classe chaque document par type et range les sorties dans un sous-dossier. Si `false`, les sorties sont écrites à la racine des containers. |
 | `CLASSIFICATION_MIN_CONFIDENCE` | 0.6 | Confiance minimale du type principal. En dessous, le document va dans `non-classe/`. |
 | `CLASSIFICATION_SECONDARY_MIN_CONFIDENCE` | 0.3 | Confiance minimale pour conserver un type secondaire dans le rapport, la trace et les métadonnées. |
@@ -300,3 +303,8 @@ Les sorties déjà produites dans `pseudonymised/` et `quarantine/` ne sont pas 
 
 Les documents déjà publiés ne changent pas. Redéposez-les dans `incoming/` pour les régénérer.
 
+## Mise à jour : écriture manuscrite
+
+| Changement | Effet |
+|---|---|
+| Nouvelle variable `handwriting_policy`, **`quarantaine` par défaut** | Tout document où l'OCR détecte de l'écriture manuscrite part désormais en `quarantine/non-classe/` (motif `manuscrit_detecte`), sans appel aux agents IA. Pour garder l'ancien comportement, ajouter `handwriting_policy = "traiter"` dans `terraform.tfvars`. |

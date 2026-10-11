@@ -14,6 +14,7 @@ openai_reasoning_effort = "low"
 
 # Document publié : valeurs fictives réalistes ("substitution") ou jetons ("jetons")
 pseudo_output_mode = "substitution"
+handwriting_policy = "quarantaine" # ou "traiter"
 
 enable_language_pii       = true
 enable_private_networking = false

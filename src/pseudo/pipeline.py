@@ -175,6 +175,21 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
         reasons.append("ocr_faible_confiance")
         report["pages_ocr_faible_confiance"] = low_conf
 
+    # Écriture manuscrite : la lecture est trop incertaine (un nom illisible ne serait ni détecté
+    # ni masqué). Avec HANDWRITING_POLICY=quarantaine, le document part en revue humaine AVANT
+    # tout appel aux agents IA.
+    handwritten = {
+        p.index + 1: n
+        for p in pages
+        if (n := sum(1 for ln in p.lines if ln.source == "ocr" for w in ln.words if w.handwritten))
+    }
+    report["mots_manuscrits"] = sum(handwritten.values())
+    report["politique_manuscrit"] = settings.handwriting_policy
+    if handwritten:
+        report["pages_manuscrites"] = sorted(handwritten)
+        if settings.handwriting_policy == "quarantaine":
+            return _rejected("manuscrit_detecte", report, settings)
+
     # 3. Détection (agent IA + filets de sécurité) -----------------------------------------
     catalog = services.fields() if services.fields else None
     if catalog is not None:
@@ -328,7 +343,7 @@ def _occurrences(spans: list[Span], content: DocumentContent) -> list[dict]:
 
 
 def _rejected(reason: str, report: dict, settings: Settings) -> PipelineResult:
-    """Document rejeté avant extraction : quarantaine, sans classification possible."""
+    """Document rejeté avant la détection : quarantaine, sans classification."""
     classification = unclassified(STATUT_NON_APPLICABLE, settings.unclassified_folder)
     report = {**report, "statut": "quarantine", "motifs": [reason], "classification": classification.to_dict()}
     return PipelineResult(status="quarantine", reasons=[reason], report=report, classification=classification)

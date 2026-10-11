@@ -114,6 +114,17 @@ variable "pseudo_output_mode" {
   }
 }
 
+variable "handwriting_policy" {
+  description = "Document contenant de l'écriture manuscrite (détectée par l'OCR) : \"quarantaine\" (revue humaine, aucun appel aux agents IA) ou \"traiter\"."
+  type        = string
+  default     = "quarantaine"
+
+  validation {
+    condition     = contains(["quarantaine", "traiter"], var.handwriting_policy)
+    error_message = "handwriting_policy : \"quarantaine\" ou \"traiter\"."
+  }
+}
+
 variable "enable_language_pii" {
   description = "Déploie Azure AI Language et l'utilise comme filet de sécurité PII."
   type        = bool

@@ -212,7 +212,9 @@ flowchart TD
     D -- natif --> E3[OCR de la page entière]
     E3 --> E4[Garde uniquement les mots OCR<br/>hors couche texte = texte des images<br/>logo, tampon, carte collée]
     D -- scanné --> E2[OCR Document Intelligence<br/>mots + polygones + confiance]
-    E1 & E4 & E2 & IMG --> F[Lignes numérotées<br/>p1-l7 texte, p1-i3 image]
+    E1 & E4 & E2 & IMG --> HW{Écriture manuscrite<br/>détectée par l'OCR ?}
+    HW -- "oui + HANDWRITING_POLICY=quarantaine" --> QH[[quarantine/non-classe/<br/>motif manuscrit_detecte]]
+    HW -- "non, ou politique « traiter »" --> F[Lignes numérotées<br/>p1-l7 texte, p1-i3 image]
     F --> G[Agent IA de détection]
     F --> H[Regex : NIR clé valide, e-mail,<br/>téléphone FR, date de naissance]
     F --> I[Azure AI Language PII]
@@ -235,6 +237,25 @@ flowchart TD
     P1 & P2 --> R[PDF reconstruit sans métadonnées,<br/>pièces jointes ni liens]
     R & P3 --> OK[[pseudonymised/&lt;type&gt;/]]
 ```
+
+### Écriture manuscrite
+
+Document Intelligence signale les passages écrits à la main (`styles` : `isHandwritten` et une
+confiance, sur des plages du texte). Chaque mot concerné est marqué `handwritten`, à partir de
+`HANDWRITING_MIN_CONFIDENCE` (0,5).
+
+La lecture du manuscrit est la plus incertaine : un nom illisible n'est ni lu, ni détecté, ni
+masqué, et un nom mal lu reçoit un jeton différent d'un document à l'autre. D'où le réglage
+`HANDWRITING_POLICY` (variable Terraform `handwriting_policy`) :
+
+| Valeur | Comportement |
+|---|---|
+| `quarantaine` (défaut) | Dès qu'un mot manuscrit est détecté, sur n'importe quelle page (y compris dans une image incrustée d'une page native), le document part en `quarantine/non-classe/` avec le motif `manuscrit_detecte`. Le contrôle a lieu **juste après l'OCR, avant tout appel aux agents IA** : le texte manuscrit n'est envoyé à aucun modèle. |
+| `traiter` | Le document suit le circuit normal. Le nombre de mots manuscrits est seulement noté dans le rapport. |
+
+Dans les deux cas, le rapport et la trace contiennent `mots_manuscrits`, `pages_manuscrites` et
+`politique_manuscrit`. Une signature lisible comme texte suffit à déclencher la quarantaine :
+c'est voulu.
 
 ## Valeurs fictives (mode substitution)
 
@@ -470,6 +491,9 @@ traitement précédent sont retrouvées grâce à la trace Cosmos DB et **suppri
 **Commun**
 - L'OCR ne lit que du **texte** : un visage sur une photo ou une signature manuscrite illisible
   ne sont pas détectés.
+- La détection du manuscrit repose sur Document Intelligence : quelques mots manuscrits non
+  signalés comme tels passent le contrôle `HANDWRITING_POLICY`. Avec la politique `traiter`, un nom
+  manuscrit mal lu ou non lu peut rester visible.
 - Un jeton long dans une zone étroite (prénom court) s'affiche en petits caractères. Le fichier
   `.pseudonymise.txt` contient toujours les jetons complets.
 - Les confiances de classification sont **estimées par le modèle**, ce ne sont pas des
