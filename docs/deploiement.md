@@ -99,7 +99,7 @@ Les exemples ci-dessous correspondent à `project = "pseudo"`, `environment = "d
 | **Azure OpenAI** | `oai-pseudo-dev-mdg6` | `ai.tf` | Modèle des **trois agents IA** : détection, vérification, classification. Déploiement `pseudo-llm` (modèle `openai_model_name`). Région `openai_location`. |
 | **Document Intelligence** | `di-pseudo-dev-mdg6` | `ai.tf` | **OCR** (`prebuilt-read`) des pages de PDF et des images. |
 | Coffre de clés (Key Vault) | `kv-pseudodevmdg6` | `keyvault.tf` | Secrets `pseudo-hmac-key` (calcul des jetons) et `pseudo-encryption-key` (chiffrement des valeurs d'origine). Journal d'audit des accès. |
-| Compte Azure Cosmos DB (serverless) | `cosmos-pseudo-dev-mdg6` | `cosmos.tf` | Base `pseudonymisation` : container `mappings` (jeton → valeur chiffrée, pour la ré-identification) et `traces` (historique des traitements, expiration après 1 an). |
+| Compte Azure Cosmos DB (serverless) | `cosmos-pseudo-dev-mdg6` | `cosmos.tf` | Base `pseudonymisation` : containers `mappings` (jeton → valeur d'origine chiffrée), `occurrences` (emplacement de chaque valeur remplacée dans les documents publiés : document, page, position, jeton, valeur fictive) et `traces` (historique des traitements, expiration après 1 an). |
 | Espace de travail Log Analytics | `log-pseudo-dev` | `main.tf` | Journaux : télémétrie des Functions, audit Key Vault. |
 | Application Insights | `appi-pseudo-dev` | `main.tf` | Supervision des deux Function Apps (journaux, exceptions, performances). |
 
@@ -152,6 +152,7 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 | `openai_deployment_sku` | `DataZoneStandard` | Traitement des données dans la zone UE. `Standard` reste régional, `GlobalStandard` est à proscrire pour des données personnelles. |
 | `openai_capacity` | `100` (k tokens/min) | Dépend du quota et du volume de documents. |
 | `openai_reasoning_effort` | `low` | Compromis coût / qualité. Laisser vide pour un modèle non « raisonnement ». |
+| `pseudo_output_mode` | `substitution` | Contenu du document publié : valeurs fictives réalistes (`substitution`) ou jetons (`jetons`). Voir [architecture](architecture.md#valeurs-fictives-mode-substitution). |
 | `enable_language_pii` | `true` | Filet de sécurité optionnel, avec un coût supplémentaire. |
 | `enable_private_networking` | `false` | Le réseau privé est recommandé en production, mais plus coûteux (Service Bus Premium) et plus complexe à opérer. |
 | `allowed_ip_ranges` | `[]` | IP du poste ou du runner CI, autorisées quand l'accès public est fermé. |
@@ -197,6 +198,7 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 | `QUARANTINE_ON_UNLOCATED` | true | Quarantaine si une entité signalée par un agent est introuvable dans le texte. |
 | `LANGUAGE_PII_CATEGORIES` | `Person:PERSONNE,...` | Correspondance entre les catégories Azure AI Language et les types internes. |
 | `PROMPT_CACHE_SECONDS` | 300 | Délai de rechargement des prompts. |
+| `PSEUDO_OUTPUT_MODE` | substitution | Posé par la variable `pseudo_output_mode` (ne pas le passer dans `pipeline_settings`). |
 | `CLASSIFICATION_ENABLED` | true | Classe chaque document par type et range les sorties dans un sous-dossier. Si `false`, les sorties sont écrites à la racine des containers. |
 | `CLASSIFICATION_MIN_CONFIDENCE` | 0.6 | Confiance minimale du type principal. En dessous, le document va dans `non-classe/`. |
 | `CLASSIFICATION_SECONDARY_MIN_CONFIDENCE` | 0.3 | Confiance minimale pour conserver un type secondaire dans le rapport, la trace et les métadonnées. |
@@ -287,3 +289,14 @@ Le passage aux étapes par messages modifie l'infrastructure existante. À relir
 | Nouvelle variable `work_retention_days` | Valeur par défaut (1 jour) : rien à ajouter dans `terraform.tfvars`. |
 
 Les sorties déjà produites dans `pseudonymised/` et `quarantine/` ne sont pas touchées.
+
+## Mise à jour : valeurs fictives (mode substitution)
+
+| Changement | Effet |
+|---|---|
+| Nouveau container Cosmos DB `occurrences` | Créé par Terraform. Rien à migrer : il se remplit avec les nouveaux traitements. |
+| Nouvelle variable `pseudo_output_mode`, **`substitution` par défaut** | Les documents publiés contiennent désormais des **valeurs fictives réalistes** au lieu des jetons. Pour garder les jetons, ajouter `pseudo_output_mode = "jetons"` dans `terraform.tfvars`. |
+| Ligne `**Substitution**` dans `champs-a-pseudonymiser.md` | À publier avec `./scripts/publish-prompts.ps1` (fait par `deploy.ps1`). |
+
+Les documents déjà publiés ne changent pas. Redéposez-les dans `incoming/` pour les régénérer.
+

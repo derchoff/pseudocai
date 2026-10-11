@@ -103,6 +103,17 @@ variable "openai_reasoning_effort" {
   default     = "low"
 }
 
+variable "pseudo_output_mode" {
+  description = "Contenu du document publié : \"substitution\" (valeurs fictives réalistes, lisibles par un OCR) ou \"jetons\" ([NOM_3FA94C0B21]…)."
+  type        = string
+  default     = "substitution"
+
+  validation {
+    condition     = contains(["substitution", "jetons"], var.pseudo_output_mode)
+    error_message = "pseudo_output_mode : \"substitution\" ou \"jetons\"."
+  }
+}
+
 variable "enable_language_pii" {
   description = "Déploie Azure AI Language et l'utilise comme filet de sécurité PII."
   type        = bool

@@ -8,6 +8,7 @@ from pseudo.extraction import extract_native_page
 from pseudo.models import Entity
 from pseudo.pipeline import Services, run_pipeline
 from pseudo.pseudonymizer import Pseudonymizer, ValueCipher
+from pseudo.surrogates import SurrogateFactory
 
 LINES = [
     "Attestation",
@@ -136,6 +137,7 @@ def services(**kwargs) -> Services:
         cipher=ValueCipher(b"e" * 32),
         verifier=FakeVerifier(),
         ocr=TruthOcr(make_text_pdf()),
+        surrogates=SurrogateFactory(b"k" * 32, current_year=2026),
     )
     defaults.update(kwargs)
     return Services(**defaults)

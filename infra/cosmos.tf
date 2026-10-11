@@ -54,6 +54,18 @@ resource "azurerm_cosmosdb_sql_container" "traces" {
   default_ttl         = 31536000 # 1 an
 }
 
+# Une fiche par zone remplacée dans un document publié : document, page, position, type, jeton,
+# valeur fictive. Aucune valeur d'origine (elle reste chiffrée dans « mappings », via le jeton).
+# Sert à la ré-identification « tel document, telle valeur fictive ». Pas d'expiration : les
+# fiches vivent aussi longtemps que les documents publiés (remplacées à chaque retraitement).
+resource "azurerm_cosmosdb_sql_container" "occurrences" {
+  name                = "occurrences"
+  resource_group_name = azurerm_resource_group.main.name
+  account_name        = azurerm_cosmosdb_account.main.name
+  database_name       = azurerm_cosmosdb_sql_database.main.name
+  partition_key_paths = ["/documentId"]
+}
+
 resource "azurerm_cosmosdb_sql_role_assignment" "func" {
   resource_group_name = azurerm_resource_group.main.name
   account_name        = azurerm_cosmosdb_account.main.name

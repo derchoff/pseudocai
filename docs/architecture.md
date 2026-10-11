@@ -236,6 +236,79 @@ flowchart TD
     R & P3 --> OK[[pseudonymised/&lt;type&gt;/]]
 ```
 
+## Valeurs fictives (mode substitution)
+
+Le contenu publié dépend de `PSEUDO_OUTPUT_MODE` (variable Terraform `pseudo_output_mode`) :
+
+| Mode | Document publié | Usage |
+|---|---|---|
+| `substitution` (défaut) | `Patient : M. MEYER Bernard, tél. 06 39 98 07 15` | Documents réalistes, lisibles par un OCR, réutilisables comme jeux de test. |
+| `jetons` | `Patient : M. [NOM_3FA9…] [PRENOM_77D0…], tél. [TELEPHONE_F1E4…]` | Relecture humaine ou audit : on voit immédiatement ce qui a été remplacé. |
+
+**Les jetons restent utilisés en interne dans les deux modes.** L'agent de vérification doit
+distinguer ce qui a été remplacé de ce qui ne l'a pas été. Avec des valeurs réalistes, un faux
+nom ressemblerait à un vrai nom oublié. Les valeurs fictives ne sont donc posées qu'**après** la
+vérification et la classification, juste avant le rendu du document :
+
+```mermaid
+flowchart TD
+    A["① Texte d'origine<br/>M. DUPONT Jean, tél. 06 12 34 56 78"] --> B[Agent de détection + filets]
+    B --> C["② Texte avec jetons (interne)<br/>M. [NOM_3FA9] [PRENOM_77D0], tél. [TELEPHONE_F1E4]"]
+    C --> V[Agent de vérification<br/>tout ce qui n'est pas un jeton<br/>est « non remplacé »]
+    V -- résidus --> B
+    C --> K[Agent de classification]
+    V -- rien --> G["Génération des valeurs fictives (code)<br/>NOM_3FA9 → MEYER · PRENOM_77D0 → Bernard<br/>TELEPHONE_F1E4 → 06 39 98 07 15"]
+    G --> X{"≠ valeur d'origine ?<br/>≠ toute autre vraie<br/>valeur du document ?"}
+    X -- non --> G
+    X -- oui --> R["③ Document publié<br/>M. MEYER Bernard, tél. 06 39 98 07 15"]
+    G --> O[(Cosmos DB « occurrences »<br/>document, page, position,<br/>jeton, valeur fictive)]
+```
+
+**Génération** ([src/pseudo/surrogates/](../src/pseudo/surrogates/)) : par du **code**, pas par l'IA,
+à partir de listes génériques ([data/](../src/pseudo/surrogates/data/)). Chaque champ indique son
+générateur dans le référentiel (`**Substitution** : …`, voir [prompts.md](prompts.md#modifier-les-règles)).
+
+| Générateur | Valeur produite |
+|---|---|
+| `nom`, `prenom`, `personne` | Noms et prénoms courants. Le genre du prénom est conservé (prénom connu, ou civilité `M.`/`Mme` qui précède). Initiale (`J.`), prénom composé et casse sont respectés. |
+| `date_naissance` | Date **au hasard** (1925 à l'an dernier), au format de l'original (`12/03/1985`, `8 septembre 1975`, `1985-03-12`…). |
+| `nir` | NIR fictif à **clé valide**. Le chiffre du sexe est conservé. **L'année et le mois correspondent à la date de naissance fictive.** Le département et la commune sont tirés au hasard. La mise en forme (espaces) est conservée. |
+| `telephone` | Numéro dans les **tranches réservées à la fiction par l'ARCEP** (`06 39 98 …`, `04 65 71 …`), au format d'origine (`+33`, points, espaces). |
+| `email` | `prenom.nom@example.com` (domaine réservé). |
+| `adresse` | Numéro et nom de voie fictifs, **vrai couple code postal / ville**. Les mots de structure (`rue`, `Bât.`, `Apt`…) sont conservés. Une adresse sur plusieurs lignes est remplacée fragment par fragment. |
+| `generique` | Même forme que l'original : lettres → lettres (même casse), chiffres → chiffres. Pour un champ sans générateur dédié. |
+
+- **Déterministe** : le tirage est calculé par HMAC avec la clé de Key Vault déjà utilisée pour
+  les jetons. Une même valeur d'origine reçoit **la même valeur fictive dans tous les documents**,
+  et la valeur fictive ne permet pas de remonter à l'original sans la clé.
+- **Date de naissance ↔ NIR** : le faux « année + mois » est calculé à partir du vrai
+  « année (2 chiffres) + mois », de la même façon pour les deux champs. La date fictive et le NIR
+  fictif d'une même personne concordent donc toujours, même dans des documents différents.
+- **Jamais une vraie valeur** : la valeur fictive doit différer, après normalisation, de la
+  valeur d'origine et de toutes les autres valeurs d'origine du document. Sinon un nouveau tirage
+  est fait. Ce contrôle est fait par le code, pas par un agent IA : il est certain et gratuit.
+
+**Rendu**
+
+| Support | Rendu en mode substitution |
+|---|---|
+| PDF, texte natif | Le texte d'origine est **supprimé** (caviardage), puis la valeur fictive est écrite avec la **taille, la ligne de base et la graisse** du texte d'origine, sur la couleur du fond. Elle peut déborder jusqu'au mot suivant avant d'être réduite. |
+| PDF, page scannée ou texte d'une image | Pixels effacés avec la couleur du fond environnant, valeur fictive écrite en noir. |
+| Image (photo, scan) | Même principe, sur l'image d'origine. La zone suit le quadrilatère du mot sur une photo prise de biais. |
+
+**Ce qui est conservé pour revenir à l'original** :
+
+| Où | Contenu |
+|---|---|
+| Key Vault | Inchangé : la clé HMAC (jetons, valeurs fictives) et la clé AES (chiffrement). |
+| Cosmos DB `mappings` | Inchangé : jeton → valeur d'origine **chiffrée**. |
+| Cosmos DB `occurrences` (partitionné par document) | Une fiche par zone remplacée dans un document publié : chemin publié et d'origine, page, position (points, et pixels pour une image), type, jeton, valeur fictive. **Aucune valeur d'origine.** Les fiches sont remplacées à chaque retraitement du document. Elles sont écrites dans les deux modes. |
+
+Ré-identification : document + valeur fictive (ou page, position) → `occurrences` → jeton →
+`mappings` → déchiffrement avec la clé AES. On part toujours **du document** : les listes de faux
+noms étant limitées, deux personnes différentes peuvent recevoir le même faux nom. Le script
+[reidentify.py](../src/reidentify.py) fait cette résolution (voir [exploitation](exploitation.md#ré-identification)).
+
 ## Organisation du code
 
 | Module | Rôle | Utilisé par |
@@ -245,6 +318,7 @@ flowchart TD
 | `router.py` | Étape ① : routage | app principale |
 | `images/` (`prepare.py`, `preprocess.py`, `quality.py`) | Étape ② : préparation des images. **Seul code qui dépend d'OpenCV.** | app images, CLI |
 | `image_codec.py` | Décodage et encodage des images (Pillow, pillow-heif), sans EXIF en sortie | ②③ |
+| `surrogates/` | Générateurs de valeurs fictives (mode substitution) et leurs listes de données | ③ |
 | `geometry.py` | Homographies en Python pur, géométrie des pages préparées | ②③ |
 | `prepared_image.py` | Entrée « image préparée » de l'étape ③ : OCR transformé, rendu sur l'image d'origine | ③ |
 | `handler.py` | Étape ③ : chargement du job, pipeline, publication | app principale |
@@ -275,8 +349,9 @@ dépendances de `requirements-images.txt` (OpenCV, NumPy). L'app principale n'in
 | Pages natives | Couche texte **+** texte OCR des images | Le texte natif reste exact et caviardable au caractère près. Seuls les mots OCR hors couche texte sont ajoutés. |
 | Détection | **Agent LLM** piloté par un prompt + **regex** + **AI Language** | Le LLM comprend le contexte ; les filets déterministes sécurisent le rappel. |
 | Contrôle | **Second agent LLM** (vérificateur) | Repère les oublis et les fragments résiduels. |
-| Jetons | `HMAC-SHA256(clé, type + valeur normalisée)` | Une même personne reçoit le même jeton dans tous les documents. Le jeton n'est pas réversible sans la table. |
-| Ré-identification | Valeur chiffrée **AES-256-GCM** dans Cosmos DB, avec le jeton en données associées | Table séparée des documents, accès restreint et tracé (audit Key Vault). |
+| Jetons | `HMAC-SHA256(clé, type + valeur normalisée)` | Une même personne reçoit le même jeton dans tous les documents. Le jeton n'est pas réversible sans la table. Les jetons restent l'étiquette interne de chaque valeur remplacée, même en mode substitution. |
+| Document publié | **Valeurs fictives réalistes** par défaut (`substitution`), jetons en option | Documents lisibles par un OCR et réutilisables en test. Valeurs fabriquées par du code (déterministes, sûres, au format d'origine), posées après la vérification pour ne pas tromper l'agent vérificateur. |
+| Ré-identification | Valeur chiffrée **AES-256-GCM** dans Cosmos DB (`mappings`) + emplacement de chaque remplacement (`occurrences`) | Table séparée des documents, accès restreint et tracé (audit Key Vault). Retour à l'original par document et position, sans rien cacher dans les fichiers publiés. |
 | Doute | **Quarantaine** plutôt que publication | Un faux négatif (fuite) coûte bien plus cher qu'un traitement manuel. |
 | Type de document | **Agent LLM de classification** piloté par `types-documents.md`, appliqué au texte **pseudonymisé** | Minimisation RGPD. Un type s'ajoute sans redéployer. |
 | Rangement | Sous-dossier par type dans `pseudonymised/` **et** `quarantine/`, métadonnées de blob, classification dans le rapport et la trace | Consultation par dossier, filtrage par programme, statistiques via Cosmos DB. |
@@ -380,6 +455,17 @@ traitement précédent sont retrouvées grâce à la trace Cosmos DB et **suppri
 - La détection du contour du document est heuristique. Sur un fond clair et peu contrasté, elle
   peut échouer : la copie OCR n'est alors pas redressée en perspective, mais l'inclinaison reste
   corrigée.
+
+**Valeurs fictives**
+- Le remplacement reste visible à l'œil sur une photo ou un scan : le fond est reproduit par sa
+  couleur dominante, sans sa texture, et la police n'est pas celle d'origine. Il est lisible par
+  un OCR.
+- La mise en page n'est jamais décalée : une valeur fictive plus courte laisse un blanc, une
+  valeur plus longue déborde jusqu'au mot suivant puis est réduite.
+- La date de naissance fictive est tirée sur une plage large. Elle peut rendre un document
+  incohérent (un « enfant » de 70 ans), mais elle concorde toujours avec le NIR fictif.
+- Les listes de noms sont limitées : deux personnes réelles différentes peuvent recevoir le même
+  faux nom. C'est sans conséquence pour la ré-identification, qui passe par le document et la position.
 
 **Commun**
 - L'OCR ne lit que du **texte** : un visage sur une photo ou une signature manuscrite illisible

@@ -9,9 +9,12 @@ Données traitées : **nom, prénom, date de naissance, NIR (n° de sécurité s
 adresse postale, téléphone**. La liste se configure dans
 [prompts/champs-a-pseudonymiser.md](prompts/champs-a-pseudonymiser.md).
 
-Chaque valeur est remplacée par un jeton stable (`[NOM_3FA94C0B21]`). La table de
-correspondance chiffrée permet une ré-identification contrôlée. Il s'agit donc d'une
-pseudonymisation au sens du RGPD, pas d'une anonymisation.
+Par défaut, chaque valeur est remplacée par une **valeur fictive réaliste**, au même format :
+`M. DUPONT Jean, tél. 06 12 34 56 78` devient `M. MEYER Bernard, tél. 06 39 98 07 15`. Le document
+reste ainsi lisible par un OCR et exploitable en test. Un mode « jetons » (`[NOM_3FA94C0B21]`)
+reste disponible. Dans les deux cas, une table de correspondance chiffrée (Cosmos DB) permet une
+ré-identification contrôlée, par document et position. Il s'agit donc d'une pseudonymisation au
+sens du RGPD, pas d'une anonymisation.
 
 ```
 incoming/ ─► Event Grid ─► [incoming-events] ─► ① Routage (Function principale)

@@ -83,8 +83,11 @@ def publish(
     report: dict,
     classification: Classification,
     previous: dict | None,
+    occurrences: list[dict] | None = None,
+    image_dpi: int | None = None,
 ) -> list[str]:
-    """Écrit les sorties pseudonymisées (document au format d'origine, texte, rapport)."""
+    """Écrit les sorties pseudonymisées (document au format d'origine, texte, rapport) et les
+    occurrences (zones remplacées) qui permettent la ré-identification par document et position."""
     settings = ctx.settings
     names = output_names(job.source_name, classification.dossier)
     files = [
@@ -93,8 +96,32 @@ def publish(
         OutputFile(names["report"], _json(report), "application/json"),
     ]
     outputs = _write(ctx, settings.output_container, files, classification)
+    ctx.mapping_store.save_occurrences(
+        job.document_id, _occurrence_items(job, outputs[0], occurrences or [], image_dpi)
+    )
     _finish(ctx, job, "ok", report, classification, outputs, previous, STAGE_PSEUDONYMISATION)
     return outputs
+
+
+def _occurrence_items(job: Job, document_path: str, occurrences: list[dict], image_dpi: int | None) -> list[dict]:
+    """Fiches Cosmos DB « occurrences » : aucune valeur d'origine (elle reste chiffrée dans
+    « mappings », retrouvée par le jeton). Pour une image, la position est aussi donnée en pixels."""
+    items = []
+    for n, occ in enumerate(occurrences):
+        item = {
+            "id": f"{job.job_id}-{n}",
+            "documentId": job.document_id,
+            "jobId": job.job_id,
+            "document": document_path,
+            "source": f"{job.source_container}/{job.source_name}",
+            "origine": job.origin,
+            **occ,
+            "unite_position": "point",
+        }
+        if image_dpi:
+            item["position_pixels"] = [round(v * image_dpi / 72) for v in occ["position"]]
+        items.append(item)
+    return items
 
 
 def quarantine(

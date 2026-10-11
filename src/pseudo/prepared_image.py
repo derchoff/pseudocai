@@ -25,6 +25,7 @@ from .image_codec import decode, encode
 from .jobs import Job
 from .models import DocumentContent, Line, PageContent, Span
 from .pipeline import PipelineInput
+from .redaction import ring_color
 
 FILL_RGB = (217, 217, 217)
 TEXT_RGB = (0, 0, 0)
@@ -88,13 +89,23 @@ class ImageRenderer:
             draw = ImageDraw.Draw(frame)
             for line, span in items:
                 quads_px = [[v * g.dpi / 72 for v in quad] for quad in span_quads(line, span)]
+                if not quads_px:
+                    continue
+                boxes = [bbox(px) for px in quads_px]
+                union = (min(b[0] for b in boxes), min(b[1] for b in boxes),
+                         max(b[2] for b in boxes), max(b[3] for b in boxes))
+                if span.surrogate is not None:
+                    # Mode substitution : zone de la couleur du fond, valeur fictive en texte ordinaire.
+                    fill = ring_color(lambda x, y: frame.getpixel((x, y)), *(int(v) for v in union),
+                                      frame.width, frame.height)
+                else:
+                    fill = FILL_RGB
                 for px in quads_px:
-                    draw.polygon(_expand(px, MARGIN_PX), fill=FILL_RGB)
-                if quads_px:
-                    # Un seul jeton par zone, même si la valeur couvre plusieurs mots.
-                    boxes = [bbox(px) for px in quads_px]
-                    union = (min(b[0] for b in boxes), min(b[1] for b in boxes),
-                             max(b[2] for b in boxes), max(b[3] for b in boxes))
+                    draw.polygon(_expand(px, MARGIN_PX), fill=fill)
+                # Un seul remplacement par zone, même si la valeur couvre plusieurs mots.
+                if span.surrogate is not None:
+                    _draw_surrogate(draw, span.surrogate, union)
+                else:
                     _draw_token(draw, span.token, union)
         return encode(frames, self._fmt, self._settings.image_output_quality)
 
@@ -123,6 +134,21 @@ def _draw_token(draw, token: str, box: tuple[float, float, float, float]) -> Non
         font = _font(ImageFont, size)
         text_width = draw.textlength(token, font=font)
     draw.text((x0 + (width - text_width) / 2, y0 + (height - size) / 2), token, fill=TEXT_RGB, font=font)
+
+
+def _draw_surrogate(draw, text: str, box: tuple[float, float, float, float]) -> None:
+    """Valeur fictive : texte noir aligné à gauche, hauteur proche de celle de l'original."""
+    from PIL import ImageFont
+
+    x0, y0, x1, y1 = box
+    width, height = x1 - x0, y1 - y0
+    size = max(6, int(height * 0.85))
+    font = _font(ImageFont, size)
+    text_width = draw.textlength(text, font=font)
+    if text_width > width and text_width > 0:
+        size = max(6, int(size * width / text_width))
+        font = _font(ImageFont, size)
+    draw.text((x0, y0 + (height - size) / 2), text, fill=TEXT_RGB, font=font)
 
 
 def _font(image_font, size: int):

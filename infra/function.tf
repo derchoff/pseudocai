@@ -25,6 +25,8 @@ locals {
     COSMOS_DATABASE          = azurerm_cosmosdb_sql_database.main.name
     COSMOS_MAPPING_CONTAINER = azurerm_cosmosdb_sql_container.mappings.name
     COSMOS_TRACE_CONTAINER   = azurerm_cosmosdb_sql_container.traces.name
+    # Écrit par l'étape de pseudonymisation (app principale) uniquement.
+    COSMOS_OCCURRENCE_CONTAINER = azurerm_cosmosdb_sql_container.occurrences.name
   }
 }
 
@@ -54,6 +56,7 @@ module "function_main" {
     {
       # function_app.py n'enregistre que route_incoming et pseudonymise_job.
       FUNCTION_APP_ROLE              = "main"
+      PSEUDO_OUTPUT_MODE             = var.pseudo_output_mode
       ServiceBusConnection__clientId = azurerm_user_assigned_identity.func.client_id
       PROMPTS_PREFIX                 = "prompts/"
 

@@ -74,6 +74,9 @@ class MemoryStore:
         mine = [t for t in self.traces if t["documentId"] == document_id]
         return mine[-1] if mine else None
 
+    def save_occurrences(self, document_id, items):
+        self.occurrences = [o for o in getattr(self, "occurrences", []) if o["documentId"] != document_id] + items
+
 
 def event(name: str, container: str = "incoming") -> str:
     return json.dumps({"data": {"url": f"https://st.blob.core.windows.net/{container}/{name}"}})

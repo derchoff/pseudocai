@@ -106,6 +106,12 @@ class Span:
     source: str
     value: str | None = None  # valeur servant au calcul du jeton (défaut : texte couvert)
     token: str | None = None
+    surrogate: str | None = None  # valeur fictive (mode substitution), posée juste avant le rendu
+
+    @property
+    def replacement(self) -> str | None:
+        """Texte écrit à la place de l'original : valeur fictive si définie, sinon jeton."""
+        return self.surrogate if self.surrogate is not None else self.token
 
     def text(self, line: Line) -> str:
         return line.text[self.start:self.end]

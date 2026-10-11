@@ -28,6 +28,16 @@ def _float(name: str, default: float) -> float:
     return float(value) if value is not None else default
 
 
+OUTPUT_MODES = ("substitution", "jetons")
+
+
+def _output_mode() -> str:
+    value = (_env("PSEUDO_OUTPUT_MODE", "substitution") or "").strip().lower()
+    if value not in OUTPUT_MODES:
+        raise ValueError(f"PSEUDO_OUTPUT_MODE inconnu : {value!r} (attendu : {', '.join(OUTPUT_MODES)})")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     # Stockage
@@ -64,6 +74,7 @@ class Settings:
     cosmos_database: str
     cosmos_mapping_container: str
     cosmos_trace_container: str
+    cosmos_occurrence_container: str
 
     # Paramètres du pipeline
     max_pages: int
@@ -82,6 +93,9 @@ class Settings:
     fuzzy_min_score: float
     quarantine_on_unlocated: bool
     prompt_cache_seconds: int
+
+    # Contenu du document publié : "substitution" (valeurs fictives réalistes) ou "jetons"
+    output_mode: str
 
     # Classification du type de document
     classification_enabled: bool
@@ -137,6 +151,7 @@ class Settings:
             cosmos_database=_env("COSMOS_DATABASE", "pseudonymisation"),
             cosmos_mapping_container=_env("COSMOS_MAPPING_CONTAINER", "mappings"),
             cosmos_trace_container=_env("COSMOS_TRACE_CONTAINER", "traces"),
+            cosmos_occurrence_container=_env("COSMOS_OCCURRENCE_CONTAINER", "occurrences"),
             max_pages=_int("MAX_PAGES", 200),
             min_native_chars=_int("MIN_NATIVE_CHARS", 30),
             image_coverage_ocr_threshold=_float("IMAGE_COVERAGE_OCR_THRESHOLD", 0.6),
@@ -153,6 +168,7 @@ class Settings:
             fuzzy_min_score=_float("FUZZY_MIN_SCORE", 85.0),
             quarantine_on_unlocated=_bool("QUARANTINE_ON_UNLOCATED", True),
             prompt_cache_seconds=_int("PROMPT_CACHE_SECONDS", 300),
+            output_mode=_output_mode(),
             classification_enabled=_bool("CLASSIFICATION_ENABLED", True),
             classification_min_confidence=_float("CLASSIFICATION_MIN_CONFIDENCE", 0.6),
             classification_secondary_min_confidence=_float("CLASSIFICATION_SECONDARY_MIN_CONFIDENCE", 0.3),

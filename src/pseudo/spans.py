@@ -210,7 +210,7 @@ def pseudonymise_line(line: Line, spans: list[Span]) -> PseudoLine:
 
     for s in sorted(spans, key=lambda s: s.start):
         add(line.text[pos_orig:s.start], pos_orig, s.start, False)
-        add(s.token or f"[{s.type}]", s.start, s.end, True)
+        add(s.replacement or f"[{s.type}]", s.start, s.end, True)
         pos_orig = s.end
     add(line.text[pos_orig:], pos_orig, len(line.text), False)
     return PseudoLine(id=line.id, text="".join(parts), segments=segments)

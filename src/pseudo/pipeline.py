@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -23,10 +24,11 @@ from .config import Settings
 from .doctypes import DocTypeCatalog
 from .detection.regex_rules import detect_regex
 from .extraction import OcrEngine, extract_document
-from .fields import FieldCatalog
+from .fields import BUILTIN_STRATEGIES, BUILTIN_SUBSTITUTIONS, DEFAULT_STRATEGY, DEFAULT_SUBSTITUTION, FieldCatalog
 from .models import DocumentContent, Entity, Line, PageContent, Span
-from .pseudonymizer import MappingRecord, Pseudonymizer, ValueCipher
+from .pseudonymizer import MappingRecord, Pseudonymizer, ValueCipher, normalize
 from .redaction import normalize_rotation, render_pdf
+from .surrogates import SurrogateFactory
 from .spans import (
     coverage_signature,
     merge_spans,
@@ -77,6 +79,8 @@ class Services:
     fields: Callable[[], FieldCatalog] | None = None
     # Agent de classification du type de document (None = classification désactivée).
     classifier: Classifier | None = None
+    # Fabrique de valeurs fictives (obligatoire en mode PSEUDO_OUTPUT_MODE=substitution).
+    surrogates: SurrogateFactory | None = None
 
 
 Renderer = Callable[[bytes, DocumentContent, list[Span], int], bytes]
@@ -103,6 +107,8 @@ class PipelineResult:
     records: list[MappingRecord] = field(default_factory=list)
     report: dict = field(default_factory=dict)
     classification: Classification | None = None
+    # Une entrée par zone remplacée : jeton, type, valeur fictive, page, position (sans valeur d'origine).
+    occurrences: list[dict] = field(default_factory=list)
 
 
 def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Services) -> PipelineResult:
@@ -223,7 +229,17 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
     classification = _classify(text, settings, services)
     report["classification"] = classification.to_dict()
 
-    # 6. Rendu --------------------------------------------------------------------------------
+    # 6. Valeurs fictives (mode substitution) : les jetons ont servi à la vérification et à la
+    #    classification ; seul le document publié reçoit des valeurs réalistes.
+    report["mode_sortie"] = settings.output_mode
+    if settings.output_mode == "substitution":
+        if services.surrogates is None:
+            raise RuntimeError("Mode substitution sans fabrique de valeurs fictives (services.surrogates)")
+        _assign_surrogates(spans, content, catalog, services.surrogates)
+        text = render_text(content, pseudonymise_document(content, spans))
+    occurrences = _occurrences(spans, content)
+
+    # 7. Rendu --------------------------------------------------------------------------------
     renderer = source.renderer or render_pdf
     output = renderer(pdf_bytes, content, spans, settings.ocr_render_dpi)
     report["duree_secondes"] = round(time.monotonic() - started, 2)
@@ -239,7 +255,76 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
         records=records,
         report=report,
         classification=classification,
+        occurrences=occurrences,
     )
+
+
+_CIVILITY_RE = re.compile(r"\b(?:M\.|Mr\b|Monsieur\b|Mme\b|Mlle\b|Madame\b|Mademoiselle\b)", re.IGNORECASE)
+
+
+def _gender_hint(line: Line, span: Span) -> str | None:
+    """Civilité la plus proche avant la valeur (« M. DUPONT Jean » -> masculin)."""
+    found = _CIVILITY_RE.findall(line.text[: span.start])
+    if not found:
+        return None
+    return "f" if found[-1].lower().startswith(("mme", "mlle", "madame", "mademoiselle")) else "m"
+
+
+def _assign_surrogates(
+    spans: list[Span], content: DocumentContent, catalog: FieldCatalog | None, factory: SurrogateFactory
+) -> None:
+    """Pose sur chaque zone sa valeur fictive : déterministe, au format de l'original, et différente
+    de l'originale comme de toute autre vraie valeur du document (comparaison après normalisation)."""
+
+    def strategy(entity_type: str) -> str:
+        return (catalog.strategy(entity_type) if catalog else None) or BUILTIN_STRATEGIES.get(entity_type, DEFAULT_STRATEGY)
+
+    def generator(entity_type: str) -> str:
+        if catalog is not None:
+            return catalog.substitution(entity_type)
+        return BUILTIN_SUBSTITUTIONS.get(entity_type, DEFAULT_SUBSTITUTION)
+
+    texts = [(s, s.text(content.line(s.line_id))) for s in spans]
+    originals: dict[str, set[str]] = {}
+    for s, text in texts:
+        strat = strategy(s.type)
+        originals.setdefault(strat, set()).add(normalize(strat, text))
+    for s, text in texts:
+        strat = strategy(s.type)
+        s.surrogate = factory.unique(
+            generator(s.type),
+            text,
+            key=f"{s.type}|{normalize(strat, text)}",
+            forbidden=originals[strat],
+            normalize=lambda v, strat=strat: normalize(strat, v),
+            gender_hint=_gender_hint(content.line(s.line_id), s),
+        )
+
+
+def _occurrences(spans: list[Span], content: DocumentContent) -> list[dict]:
+    """Emplacements remplacés, en points de la page (repère PyMuPDF), sans valeur d'origine."""
+    out = []
+    for s in spans:
+        line = content.line(s.line_id)
+        words = [w for w in line.words if w.start < s.end and w.end > s.start]
+        if not words:
+            continue
+        x0 = min(w.rect[0] for w in words)
+        y0 = min(w.rect[1] for w in words)
+        x1 = max(w.rect[2] for w in words)
+        y1 = max(w.rect[3] for w in words)
+        out.append(
+            {
+                "jeton": (s.token or "").strip("[]"),
+                "type": s.type,
+                "valeur_fictive": s.surrogate,
+                "page": line.page + 1,
+                "ligne": s.line_id,
+                "position": [round(v, 2) for v in (x0, y0, x1, y1)],
+                "quadrilateres": [[round(v, 2) for v in w.quad] for w in words if w.quad] or None,
+            }
+        )
+    return out
 
 
 def _rejected(reason: str, report: dict, settings: Settings) -> PipelineResult:

@@ -28,6 +28,10 @@ class MappingStore(Protocol):
         """Dernière trace d'un document (sert à nettoyer les sorties d'un traitement précédent)."""
         ...
 
+    def save_occurrences(self, document_id: str, items: list[dict]) -> None:
+        """Remplace les occurrences (zones remplacées) d'un document publié."""
+        ...
+
 
 class NullMappingStore:
     def save(self, records: list[MappingRecord]) -> None:
@@ -38,6 +42,9 @@ class NullMappingStore:
 
     def last_trace(self, document_id: str) -> dict | None:
         return None
+
+    def save_occurrences(self, document_id: str, items: list[dict]) -> None:
+        pass
 
 
 class JsonFileMappingStore:
@@ -61,11 +68,15 @@ class JsonFileMappingStore:
     def last_trace(self, document_id: str) -> dict | None:
         return None
 
+    def save_occurrences(self, document_id: str, items: list[dict]) -> None:
+        pass
+
 
 class CosmosMappingStore:
-    def __init__(self, database_client, mapping_container: str, trace_container: str):
+    def __init__(self, database_client, mapping_container: str, trace_container: str, occurrence_container: str):
         self._mappings = database_client.get_container_client(mapping_container)
         self._traces = database_client.get_container_client(trace_container)
+        self._occurrences = database_client.get_container_client(occurrence_container)
 
     def save(self, records: list[MappingRecord]) -> None:
         from azure.cosmos.exceptions import CosmosResourceExistsError
@@ -97,3 +108,16 @@ class CosmosMappingStore:
             partition_key=document_id,
         )
         return next(iter(items), None)
+
+    def save_occurrences(self, document_id: str, items: list[dict]) -> None:
+        """Les occurrences d'un traitement précédent du même document sont supprimées d'abord :
+        elles décrivent toujours la version publiée en cours."""
+        previous = self._occurrences.query_items(
+            query="SELECT c.id FROM c WHERE c.documentId = @id",
+            parameters=[{"name": "@id", "value": document_id}],
+            partition_key=document_id,
+        )
+        for item in previous:
+            self._occurrences.delete_item(item=item["id"], partition_key=document_id)
+        for item in items:
+            self._occurrences.upsert_item(item)

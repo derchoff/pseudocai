@@ -12,6 +12,9 @@ openai_deployment_sku   = "DataZoneStandard"
 openai_capacity         = 100
 openai_reasoning_effort = "low"
 
+# Document publié : valeurs fictives réalistes ("substitution") ou jetons ("jetons")
+pseudo_output_mode = "substitution"
+
 enable_language_pii       = true
 enable_private_networking = false
 allowed_ip_ranges         = [] # ex. ["203.0.113.10"] : IP du poste/runner de déploiement

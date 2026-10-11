@@ -68,6 +68,7 @@ def prepare_image(data: bytes, fmt: str, settings: Settings) -> PreparedArtifact
         "pages": len(decoded.frames),
         "orientation_exif": decoded.exif_orientation,
         "copie_ocr": settings.image_enhance_for_ocr,
+        "dpi": settings.image_render_dpi,  # points de render.pdf = pixels de l'image × 72 / dpi
         "pages_detail": pages_info,
     }
     if reasons:

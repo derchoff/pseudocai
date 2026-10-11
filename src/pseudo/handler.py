@@ -54,7 +54,18 @@ def handle_pdf_job(body: bytes | str, runtime: Runtime) -> str:
 
     # Les correspondances sont persistées AVANT publication : un jeton publié est toujours réversible.
     runtime.mapping_store.save(result.records)
-    publish(runtime, job, result.output, result.text, result.report, classification, previous)
+    image_dpi = job.prepared.preparation.get("dpi") if job.prepared else None
+    publish(
+        runtime,
+        job,
+        result.output,
+        result.text,
+        result.report,
+        classification,
+        previous,
+        occurrences=result.occurrences,
+        image_dpi=image_dpi,
+    )
     log.info(
         "Document pseudonymisé doc=%s type=%s entites=%s",
         job.document_id,

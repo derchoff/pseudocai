@@ -61,6 +61,23 @@ p1-l3: Né le 12/03/1985 - N° SS : 1 85 03 75 123 456 78
 
 ## Modifier les règles
 
+Chaque champ du référentiel peut indiquer le **générateur de sa valeur fictive**, utilisé en mode
+`PSEUDO_OUTPUT_MODE=substitution`. La ligne est lue par le code, comme `Normalisation` :
+
+```markdown
+## PRENOM — Prénom d'une personne physique
+
+- **Normalisation** : texte
+- **Substitution** : prenom
+```
+
+Générateurs disponibles : `nom`, `prenom`, `personne`, `date_naissance`, `nir`, `telephone`, `email`,
+`adresse` et `generique` (défaut : même forme, lettres → lettres et chiffres → chiffres). Leur
+détail est dans [architecture.md](architecture.md#valeurs-fictives-mode-substitution). Les
+valeurs fictives sont fabriquées par le **code**, jamais par un agent IA : les prompts ne
+contiennent aucune valeur fictive. Un générateur inconnu bloque le traitement, comme une
+normalisation inconnue.
+
 - **Affiner un champ existant** (nouveau libellé, nouveau format, contre-exemple) : modifier
   uniquement `champs-a-pseudonymiser.md`.
 - **Changer une politique** (par exemple ne plus masquer les adresses des organisations) :

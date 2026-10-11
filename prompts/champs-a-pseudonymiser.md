@@ -14,6 +14,7 @@
 
     ## TYPE — Libellé
     - **Normalisation** : texte | chiffres | alphanumerique | email | telephone | date
+    - **Substitution** : nom | prenom | personne | date_naissance | nir | telephone | email | adresse | generique
 
   - TYPE : MAJUSCULES, chiffres et _ uniquement (ex. IBAN, NUMERO_PASSEPORT), suivi d'un tiret
     cadratin « — » ; c'est le nom qui apparaîtra dans les jetons ([IBAN_3FA94C0B21]).
@@ -25,6 +26,12 @@
       email          espaces supprimés, minuscules
       telephone      chiffres, préfixe +33 / 0033 ramené à 0
       date           convertie en AAAA-MM-JJ quand le format est reconnu
+  - Substitution (facultative, défaut : generique) : générateur de la VALEUR FICTIVE écrite dans
+    le document publié en mode PSEUDO_OUTPUT_MODE=substitution. Les valeurs sont fabriquées par le
+    code (pas par l'IA), au format de l'original, toujours les mêmes pour une même valeur :
+      nom, prenom, personne (prénom + NOM), date_naissance (cohérente avec le NIR), nir (clé valide),
+      telephone (tranches réservées à la fiction), email (@example.com), adresse (vrai code postal
+      et ville, fausse voie), generique (même forme : lettres -> lettres, chiffres -> chiffres)
   - Les titres « ## » SANS tiret cadratin (ex. « Règles transverses ») ne déclarent pas de champ.
   - Toute erreur (type mal écrit, doublon, normalisation inconnue) bloque le traitement et
     apparaît dans les journaux : un champ n'est jamais ignoré silencieusement.
@@ -43,6 +50,7 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
 ## NOM — Nom de famille d'une personne physique
 
 - **Normalisation** : texte
+- **Substitution** : nom
 - **Définition** : nom de famille, nom de naissance, nom d'usage, nom marital de toute
   personne physique citée dans le document (titulaire, patient, assuré, conjoint, enfant,
   signataire, médecin, conseiller, témoin, etc.).
@@ -63,6 +71,7 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
 ## PRENOM — Prénom d'une personne physique
 
 - **Normalisation** : texte
+- **Substitution** : prenom
 - **Définition** : prénom(s) usuel(s) ou d'état civil, y compris 2e/3e prénoms.
 - **Indices** : libellés `Prénom`, `Prénoms`, `Prénom usuel` ; mot en casse normale accolé
   à un NOM en majuscules ; formule de politesse nominative (`Cher Jean,`).
@@ -74,6 +83,7 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
 ## DATE_NAISSANCE — Date de naissance
 
 - **Normalisation** : date
+- **Substitution** : date_naissance
 - **Définition** : date de naissance d'une personne physique, quel que soit son format.
 - **Formats** : `12/03/1985`, `12-03-85`, `12.03.1985`, `12 mars 1985`, `1985-03-12`,
   `12/03/85`, `né le 12 mars`, `03/1985` (mois/année seul).
@@ -88,6 +98,7 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
 ## NIR — Numéro de sécurité sociale (NIR / numéro INSEE)
 
 - **Normalisation** : alphanumerique
+- **Substitution** : nir
 - **Définition** : numéro d'inscription au répertoire des personnes physiques, figurant
   notamment sur la carte Vitale et les attestations de droits.
 - **Structure** : 13 caractères + clé de 2 chiffres = 15 caractères, souvent espacés :
@@ -108,6 +119,7 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
 ## EMAIL — Adresse électronique
 
 - **Normalisation** : email
+- **Substitution** : email
 - **Définition** : toute adresse e-mail (personnelle ou professionnelle nominative).
 - **Formes** : `prenom.nom@domaine.fr`, avec éventuelles erreurs OCR : espaces autour de `@`
   ou du `.`, `(at)`, `[at]`, ` arobase `, `@` lu comme `©` ou `&`.
@@ -117,6 +129,7 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
 ## TELEPHONE — Numéro de téléphone ou de fax
 
 - **Normalisation** : telephone
+- **Substitution** : telephone
 - **Définition** : numéro de téléphone fixe, mobile ou fax d'une personne (y compris
   numéros professionnels directs).
 - **Formes** : `06 12 34 56 78`, `06.12.34.56.78`, `0612345678`, `+33 6 12 34 56 78`,
@@ -130,6 +143,7 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
 ## ADRESSE — Adresse postale
 
 - **Normalisation** : texte
+- **Substitution** : adresse
 - **Définition** : adresse postale complète ou partielle. **Politique retenue : toutes les
   adresses postales sont pseudonymisées**, qu'elles concernent une personne physique ou une
   organisation (modifiez cette règle ici si vous souhaitez conserver les adresses des

@@ -20,6 +20,7 @@ from .outputs import SimpleStorageContext
 from .pipeline import Services
 from .prompts import BlobPromptSource, LocalPromptSource, PromptRepository, PromptSource
 from .pseudonymizer import Pseudonymizer, ValueCipher
+from .surrogates import SurrogateFactory
 
 COGNITIVE_SCOPE = "https://cognitiveservices.azure.com/.default"
 
@@ -66,7 +67,12 @@ def _mapping_store(settings: Settings, cred) -> MappingStore:
     from azure.cosmos import CosmosClient
 
     database = CosmosClient(settings.cosmos_endpoint, credential=cred).get_database_client(settings.cosmos_database)
-    return CosmosMappingStore(database, settings.cosmos_mapping_container, settings.cosmos_trace_container)
+    return CosmosMappingStore(
+        database,
+        settings.cosmos_mapping_container,
+        settings.cosmos_trace_container,
+        settings.cosmos_occurrence_container,
+    )
 
 
 def build_storage_context(settings: Settings) -> SimpleStorageContext:
@@ -177,6 +183,7 @@ def build_runtime(
         cipher=ValueCipher(enc_key),
         fields=prompts.catalog,
         classifier=classifier,
+        surrogates=SurrogateFactory(hmac_key),
     )
 
     if mapping_store is None:
