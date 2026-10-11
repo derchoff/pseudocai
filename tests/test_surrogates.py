@@ -179,3 +179,63 @@ def test_photo_is_published_with_realistic_values_and_pixel_positions(settings):
     assert np.mean([v > 230 for v in samples]) > 0.4  # fond clair (feuille blanche)
     assert min(samples) < 120  # du texte sombre a été écrit
     assert not any(abs(v - 217) < 6 for v in samples[:3]) or np.mean([abs(v - 217) < 6 for v in samples]) < 0.3
+
+
+def test_homography_maps_the_four_corners():
+    from pseudo.geometry import homography
+
+    src = (10.0, 20.0, 110.0, 35.0, 105.0, 60.0, 8.0, 44.0)
+    m = homography(src, (0, 0, 100, 0, 100, 25, 0, 25))
+    for k, (u, v) in zip(range(0, 8, 2), [(0, 0), (100, 0), (100, 25), (0, 25)]):
+        x, y = apply(m, src[k], src[k + 1])
+        assert abs(x - u) < 1e-6 and abs(y - v) < 1e-6
+
+
+@pytest.mark.parametrize("slope", [0.15, -0.15])
+def test_replacement_text_follows_the_tilt_of_the_line(slope):
+    """Photo prise de biais : le texte de remplacement est incliné comme la ligne d'origine."""
+    from pseudo.raster import _draw_in_quad, _draw_surrogate
+
+    frame = Image.new("RGB", (400, 200), "white")
+    x0, y0, w, h = 50.0, 90.0, 300.0, 30.0
+    quad = (x0, y0, x0 + w, y0 + w * slope, x0 + w, y0 + w * slope + h, x0, y0 + h)
+    _draw_in_quad(frame, quad, "MMMMMMMMMMMM", _draw_surrogate)
+    dark = np.asarray(frame.convert("L")) < 128
+    ys, xs = np.nonzero(dark)
+    left, right = ys[xs < 150].mean(), ys[xs > 250].mean()
+    assert (right - left) * slope > 0 and abs((right - left) / 150 - slope) < 0.05
+
+
+def test_accented_letters_are_drawn_on_images():
+    from PIL import ImageDraw
+
+    from pseudo.raster import _font
+
+    font = _font(40)
+    assert font.getmask("â").getbbox() != font.getmask("￿").getbbox()
+    frame = Image.new("L", (200, 60), 255)
+    ImageDraw.Draw(frame).text((5, 5), "Bât.", font=font, fill=0)
+    assert np.asarray(frame).min() < 100
+
+
+def test_replacement_on_the_next_line_does_not_erase_the_previous_one():
+    """Interligne serré : le fond (agrandi) d'une zone ne recouvre pas le texte écrit sur la ligne
+    du dessus. Tous les fonds sont peints avant tous les textes."""
+    from pseudo.models import Line, Span, Word
+    from pseudo.raster import paint_spans
+
+    def item(n, y, text, surrogate):
+        word = Word(text=text, rect=(20.0, y, 20.0 + 15 * len(text), y + 20), start=0, end=len(text))
+        line = Line(id=f"l{n}", page=0, text=text, words=[word], source="ocr")
+        return line, Span(line_id=line.id, start=0, end=len(text), type="NOM", source="test",
+                          token=f"[NOM_{n}]", surrogate=surrogate)
+
+    first = item(1, 20.0, "DUPONT", "Mgjpqy")  # jambages sous la ligne de base
+    second = item(2, 38.0, "MARTIN", "LEROUX")  # boîtes OCR presque jointives
+    alone = Image.new("RGB", (200, 80), "white")
+    paint_spans(alone, [first], 1.0)
+    both = Image.new("RGB", (200, 80), "white")
+    paint_spans(both, [first, second], 1.0)
+    a = np.asarray(alone.convert("L"))[:38] < 128  # pixels du texte de la 1re ligne
+    b = np.asarray(both.convert("L"))[:38] < 128
+    assert a.sum() > 0 and (a & ~b).sum() == 0

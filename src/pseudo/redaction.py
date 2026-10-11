@@ -2,8 +2,9 @@
 
 - Pages natives : annotations de caviardage PyMuPDF puis apply_redactions(), qui SUPPRIME
   réellement le texte sous-jacent (pas un simple rectangle posé dessus).
-- Pages scannées : la page est re-rastérisée, les zones sont effacées dans les pixels, puis le
-  remplacement est écrit par-dessus. Aucune couche texte/OCR d'origine n'est conservée.
+- Pages scannées : la page est re-rastérisée et les zones sont remplacées dans les pixels, en
+  suivant l'inclinaison du texte (raster.py, comme pour les photos). Aucune couche texte/OCR
+  d'origine n'est conservée.
 Le remplacement est soit le jeton (mode « jetons » : zone grise, jeton centré), soit la valeur
 fictive (mode « substitution » : zone de la couleur du fond, texte noir aligné à gauche, pour
 un document lisible par un OCR).
@@ -13,12 +14,14 @@ annotations et signets d'origine ne sont pas recopiés.
 
 from __future__ import annotations
 
+import io
 from collections import defaultdict
 from dataclasses import dataclass
 
 import pymupdf
 
 from .models import DocumentContent, Line, Span
+from .raster import paint_spans, ring_color
 
 FILL_RGB = (0.85, 0.85, 0.85)
 TEXT_RGB = (0.0, 0.0, 0.0)
@@ -114,25 +117,6 @@ def available_width(line: Line, span: Span, rect: pymupdf.Rect, page_width: floa
     following = [w.rect[0] for w in line.words if w.start >= span.end and w.rect[0] > rect.x0]
     limit = min(following) - 1.5 if following else min(rect.x0 + rect.width * 1.5, page_width - 10)
     return max(limit - rect.x0, rect.width)
-
-
-def ring_color(pixel, x0: int, y0: int, x1: int, y1: int, width: int, height: int) -> tuple[int, int, int]:
-    """Couleur du fond autour d'une zone : couleur la PLUS FRÉQUENTE des pixels du pourtour. Le
-    texte voisin ou un trait de cadre qui longe un côté sont ainsi ignorés. `pixel(x, y)` renvoie
-    (r, g, b) en 0-255."""
-    x0, y0 = max(0, x0 - 2), max(0, y0 - 2)
-    x1, y1 = min(width - 1, x1 + 2), min(height - 1, y1 + 2)
-    step = max(1, (x1 - x0 + y1 - y0) // 200)
-    points = [(x, y) for x in range(x0, x1 + 1, step) for y in (y0, y1)]
-    points += [(x, y) for y in range(y0, y1 + 1, step) for x in (x0, x1)]
-    if not points:
-        return (255, 255, 255)
-    samples = [pixel(x, y)[:3] for x, y in points]
-    buckets: dict[tuple, list] = {}
-    for c in samples:
-        buckets.setdefault(tuple(v // 16 for v in c), []).append(c)
-    dominant = max(buckets.values(), key=len)
-    return tuple(round(sum(c[i] for c in dominant) / len(dominant)) for i in range(3))
 
 
 def _words_rect(line: Line, span: Span) -> pymupdf.Rect | None:
@@ -248,30 +232,16 @@ def _page_background(page: pymupdf.Page, rect: pymupdf.Rect) -> tuple[float, flo
 
 
 def _rebuild_scanned(out: pymupdf.Document, page: pymupdf.Page, items: list[tuple[Line, Span]], dpi: int) -> None:
+    """Page scannée : re-rastérisée, puis zones remplacées dans les pixels comme sur une photo
+    (quadrilatères des mots, texte incliné comme l'original : un scan est rarement bien droit)."""
+    from PIL import Image
+
     pix = page.get_pixmap(dpi=dpi, alpha=False)
     if pix.colorspace is None or pix.colorspace.n != 3:
         pix = pymupdf.Pixmap(pymupdf.csRGB, pix)
-    scale = dpi / 72.0
-    gray = tuple(int(c * 255) for c in FILL_RGB)
-    boxes: list[tuple] = []
-    for line, span in items:
-        for rect in span_rects(None, line, span):
-            width = available_width(line, span, rect, page.rect.width) if span.surrogate is not None else None
-            irect = pymupdf.IRect(
-                max(0, int(rect.x0 * scale)),
-                max(0, int(rect.y0 * scale)),
-                min(pix.width, int(rect.x1 * scale) + 1),
-                min(pix.height, int(rect.y1 * scale) + 1),
-            )
-            if not irect.is_empty:
-                fill = (
-                    ring_color(pix.pixel, irect.x0, irect.y0, irect.x1 - 1, irect.y1 - 1, pix.width, pix.height)
-                    if span.surrogate is not None
-                    else gray
-                )
-                pix.set_rect(irect, fill)
-            boxes.append((rect, span, width))
+    frame = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+    paint_spans(frame, items, dpi / 72.0)
+    buffer = io.BytesIO()
+    frame.save(buffer, format="PNG")
     new_page = out.new_page(width=page.rect.width, height=page.rect.height)
-    new_page.insert_image(new_page.rect, pixmap=pix)
-    for rect, span, width in boxes:
-        write_replacement(new_page, rect, span, max_width=width)
+    new_page.insert_image(new_page.rect, stream=buffer.getvalue())

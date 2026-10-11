@@ -193,8 +193,9 @@ def test_scanned_pdf_is_rasterised_and_masked(settings):
     assert result.status == "ok", result.reasons
     assert result.report["pages_ocr"] == 1
     out = pymupdf.open(stream=result.output, filetype="pdf")
-    page_text = out[0].get_text()
-    assert svc.pseudonymizer.token("NOM", "DUPONT") in page_text
+    # Le remplacement est dessiné dans les pixels (comme sur une photo) : aucune couche texte.
+    assert out[0].get_text().strip() == ""
+    assert svc.pseudonymizer.token("NOM", "DUPONT") in result.text
     # Le pixel au coin du mot « DUPONT » doit être recouvert par la couleur de masquage.
     truth = extract_native_page(pymupdf.open(stream=truth_pdf, filetype="pdf")[0])
     word = next(w for line in truth.lines for w in line.words if w.text == "DUPONT")

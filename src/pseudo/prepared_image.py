@@ -8,8 +8,8 @@ L'étape de préparation (app images) a déposé dans work/<job_id>/ :
 Ici :
 - TransformedOcr lit la copie OCR puis ramène la position de chaque mot sur l'image d'origine
   (matrice inverse) : les mots deviennent des quadrilatères qui épousent le texte vu de biais ;
-- ImageRenderer masque ces quadrilatères directement sur l'image d'origine et l'encode dans son
-  format d'origine, sans EXIF. Aucune dépendance OpenCV.
+- ImageRenderer remplace ces zones directement sur l'image d'origine (voir raster.py) et
+  l'encode dans son format d'origine, sans EXIF. Aucune dépendance OpenCV.
 """
 
 from __future__ import annotations
@@ -25,16 +25,7 @@ from .image_codec import decode, encode
 from .jobs import Job
 from .models import DocumentContent, Line, PageContent, Span
 from .pipeline import PipelineInput
-from .redaction import ring_color
-
-FILL_RGB = (217, 217, 217)
-TEXT_RGB = (0, 0, 0)
-MARGIN_PX = 2.0
-
-
-def _rect_quad(rect) -> tuple[float, ...]:
-    x0, y0, x1, y1 = rect
-    return (x0, y0, x1, y0, x1, y1, x0, y1)
+from .raster import paint_spans, rect_quad
 
 
 class TransformedOcr:
@@ -54,14 +45,9 @@ class TransformedOcr:
             to_render = multiply(scale(72 / g.dpi), multiply(invert(g.to_ocr), scale(g.dpi / 72)))
             for line in page.lines:
                 for w in line.words:
-                    w.quad = apply_quad(to_render, w.quad or _rect_quad(w.rect))
+                    w.quad = apply_quad(to_render, w.quad or rect_quad(w.rect))
                     w.rect = bbox(w.quad)
         return results
-
-
-def span_quads(line: Line, span: Span) -> list[tuple[float, ...]]:
-    """Quadrilatères des mots couverts par la zone (un mot partiellement couvert est masqué en entier)."""
-    return [w.quad or _rect_quad(w.rect) for w in line.words if w.start < span.end and w.end > span.start]
 
 
 class ImageRenderer:
@@ -74,8 +60,6 @@ class ImageRenderer:
         self._settings = settings
 
     def __call__(self, pdf_bytes: bytes, content: DocumentContent, spans: list[Span], dpi: int) -> bytes:
-        from PIL import ImageDraw
-
         frames = decode(self._original, self._fmt, self._settings.image_max_pixels).frames
         by_page: dict[int, list[tuple[Line, Span]]] = defaultdict(list)
         for s in spans:
@@ -86,76 +70,8 @@ class ImageRenderer:
             frame, g = frames[index], self._pages[index]
             if frame.size != (g.width, g.height):
                 raise ValueError("L'image d'origine ne correspond pas à l'image préparée")
-            draw = ImageDraw.Draw(frame)
-            for line, span in items:
-                quads_px = [[v * g.dpi / 72 for v in quad] for quad in span_quads(line, span)]
-                if not quads_px:
-                    continue
-                boxes = [bbox(px) for px in quads_px]
-                union = (min(b[0] for b in boxes), min(b[1] for b in boxes),
-                         max(b[2] for b in boxes), max(b[3] for b in boxes))
-                if span.surrogate is not None:
-                    # Mode substitution : zone de la couleur du fond, valeur fictive en texte ordinaire.
-                    fill = ring_color(lambda x, y: frame.getpixel((x, y)), *(int(v) for v in union),
-                                      frame.width, frame.height)
-                else:
-                    fill = FILL_RGB
-                for px in quads_px:
-                    draw.polygon(_expand(px, MARGIN_PX), fill=fill)
-                # Un seul remplacement par zone, même si la valeur couvre plusieurs mots.
-                if span.surrogate is not None:
-                    _draw_surrogate(draw, span.surrogate, union)
-                else:
-                    _draw_token(draw, span.token, union)
+            paint_spans(frame, items, g.dpi / 72)
         return encode(frames, self._fmt, self._settings.image_output_quality)
-
-
-def _expand(px: list[float], margin: float) -> list[tuple[float, float]]:
-    cx = sum(px[0::2]) / 4
-    cy = sum(px[1::2]) / 4
-    points = []
-    for x, y in zip(px[0::2], px[1::2]):
-        dx, dy = x - cx, y - cy
-        norm = max((dx * dx + dy * dy) ** 0.5, 1e-6)
-        points.append((x + dx / norm * margin, y + dy / norm * margin))
-    return points
-
-
-def _draw_token(draw, token: str, box: tuple[float, float, float, float]) -> None:
-    from PIL import ImageFont
-
-    x0, y0, x1, y1 = box
-    width, height = x1 - x0, y1 - y0
-    size = max(6, int(height * 0.7))
-    font = _font(ImageFont, size)
-    text_width = draw.textlength(token, font=font)
-    if text_width > width * 0.95 and text_width > 0:
-        size = max(6, int(size * width * 0.95 / text_width))
-        font = _font(ImageFont, size)
-        text_width = draw.textlength(token, font=font)
-    draw.text((x0 + (width - text_width) / 2, y0 + (height - size) / 2), token, fill=TEXT_RGB, font=font)
-
-
-def _draw_surrogate(draw, text: str, box: tuple[float, float, float, float]) -> None:
-    """Valeur fictive : texte noir aligné à gauche, hauteur proche de celle de l'original."""
-    from PIL import ImageFont
-
-    x0, y0, x1, y1 = box
-    width, height = x1 - x0, y1 - y0
-    size = max(6, int(height * 0.85))
-    font = _font(ImageFont, size)
-    text_width = draw.textlength(text, font=font)
-    if text_width > width and text_width > 0:
-        size = max(6, int(size * width / text_width))
-        font = _font(ImageFont, size)
-    draw.text((x0, y0 + (height - size) / 2), text, fill=TEXT_RGB, font=font)
-
-
-def _font(image_font, size: int):
-    try:
-        return image_font.load_default(size=size)
-    except TypeError:  # Pillow < 10.1 : police bitmap de taille fixe
-        return image_font.load_default()
 
 
 def load_image_input(job: Job, original: bytes, work_client, ocr: OcrEngine | None, settings: Settings) -> PipelineInput:

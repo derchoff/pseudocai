@@ -230,7 +230,7 @@ flowchart TD
     O -- oui --> QZ[[quarantine/&lt;type&gt;/]]
     O -- non --> P{Rendu}
     P -- PDF --> P1[Pages natives : suppression réelle du texte<br/>+ effacement des pixels d'images]
-    P -- PDF --> P2[Pages scannées :<br/>re-rastérisation + masquage pixels]
+    P -- PDF --> P2[Pages scannées :<br/>re-rastérisation + remplacement<br/>dans les pixels, incliné comme le texte]
     P -- image --> P3[Image d'origine : quadrilatères masqués<br/>format d'origine, sans EXIF]
     P1 & P2 --> R[PDF reconstruit sans métadonnées,<br/>pièces jointes ni liens]
     R & P3 --> OK[[pseudonymised/&lt;type&gt;/]]
@@ -293,8 +293,8 @@ générateur dans le référentiel (`**Substitution** : …`, voir [prompts.md](
 | Support | Rendu en mode substitution |
 |---|---|
 | PDF, texte natif | Le texte d'origine est **supprimé** (caviardage), puis la valeur fictive est écrite avec la **taille, la ligne de base et la graisse** du texte d'origine, sur la couleur du fond. Elle peut déborder jusqu'au mot suivant avant d'être réduite. |
-| PDF, page scannée ou texte d'une image | Pixels effacés avec la couleur du fond environnant, valeur fictive écrite en noir. |
-| Image (photo, scan) | Même principe, sur l'image d'origine. La zone suit le quadrilatère du mot sur une photo prise de biais. |
+| PDF, texte d'une image incrustée dans une page native (logo, tampon) | Pixels effacés avec la couleur du fond environnant, valeur fictive écrite en noir. |
+| Image (photo, scan) et page scannée d'un PDF | Rendu commun (`raster.py`), directement dans les pixels. Le fond de chaque mot est repeint en suivant son **quadrilatère OCR**, ce qui épouse un scan penché ou une photo prise de biais. Le texte de remplacement est dessiné à plat puis déformé (homographie) pour prendre **la même inclinaison, la même perspective et la même hauteur** que l'original. Il peut déborder jusqu'au mot suivant pour garder la taille d'origine. Tous les fonds sont peints **avant** tous les textes, pour qu'une zone de la ligne suivante ne morde pas sur le texte de la ligne du dessus. Police : Helvetica embarquée par PyMuPDF, accents compris. Une page scannée n'a donc pas de couche texte en sortie. |
 
 **Ce qui est conservé pour revenir à l'original** :
 

@@ -51,6 +51,27 @@ def bbox(quad: tuple[float, ...]) -> tuple[float, float, float, float]:
     return min(xs), min(ys), max(xs), max(ys)
 
 
+def homography(src: tuple[float, ...], dst: tuple[float, ...]) -> Matrix:
+    """Homographie qui envoie les 4 sommets de src sur ceux de dst (quadrilatères x1, y1, ..., x4, y4)."""
+    rows: list[list[float]] = []
+    for k in range(0, 8, 2):
+        x, y, u, v = src[k], src[k + 1], dst[k], dst[k + 1]
+        rows.append([x, y, 1.0, 0.0, 0.0, 0.0, -u * x, -u * y, u])
+        rows.append([0.0, 0.0, 0.0, x, y, 1.0, -v * x, -v * y, v])
+    # Élimination de Gauss avec pivot partiel (système 8 × 8).
+    for col in range(8):
+        pivot = max(range(col, 8), key=lambda r: abs(rows[r][col]))
+        if abs(rows[pivot][col]) < 1e-12:
+            raise ValueError("Quadrilatère dégénéré")
+        rows[col], rows[pivot] = rows[pivot], rows[col]
+        for r in range(8):
+            if r != col:
+                f = rows[r][col] / rows[col][col]
+                rows[r] = [a - f * b for a, b in zip(rows[r], rows[col])]
+    h = [rows[i][8] / rows[i][i] for i in range(8)]
+    return [h[0:3], h[3:6], [h[6], h[7], 1.0]]
+
+
 def scale(factor: float) -> Matrix:
     return [[factor, 0.0, 0.0], [0.0, factor, 0.0], [0.0, 0.0, 1.0]]
 
