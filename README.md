@@ -6,7 +6,8 @@ pseudonymisés, classés par type et rangés.
 Les images peuvent être des photos de smartphone ou des scans : JPEG, PNG, HEIC, TIFF, WebP, BMP.
 
 Données traitées : **nom, prénom, date de naissance, NIR (n° de sécurité sociale), e-mail,
-adresse postale, téléphone**. La liste se configure dans
+adresse postale, téléphone**, ainsi que, pour les cartes grises, **immatriculation, numéro de
+châssis (VIN) et numéro de formule**. La liste se configure dans
 [prompts/champs-a-pseudonymiser.md](prompts/champs-a-pseudonymiser.md).
 
 Par défaut, chaque valeur est remplacée par une **valeur fictive réaliste**, au même format :
@@ -41,7 +42,7 @@ incoming/ ─► Event Grid ─► [incoming-events] ─► ① Routage (Functio
 
   La sortie garde le **format et le cadrage d'origine**, sans métadonnées EXIF. Le traitement
   des images s'active par Terraform (`enable_image_processing`).
-- **Chaque document est classé par type** (dentaire, optique, kinésithérapie, psychologie…) et
+- **Chaque document est classé par type** (dentaire, optique, kinésithérapie, psychologie, carte grise…) et
   rangé dans le sous-dossier correspondant, y compris en quarantaine. Les types se déclarent
   dans [prompts/types-documents.md](prompts/types-documents.md), sans redéploiement.
 

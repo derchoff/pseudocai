@@ -39,9 +39,15 @@ def current_champs() -> str:
 # ---------------------------------------------------------------- lecture du référentiel
 
 
-def test_current_referential_declares_the_seven_fields():
+def test_current_referential_declares_the_ten_fields():
     catalog = PromptRepository(LocalPromptSource(PROMPTS)).catalog()
-    assert catalog.types == ("NOM", "PRENOM", "DATE_NAISSANCE", "NIR", "EMAIL", "TELEPHONE", "ADRESSE")
+    assert catalog.types == (
+        "NOM", "PRENOM", "DATE_NAISSANCE", "NIR", "EMAIL", "TELEPHONE", "ADRESSE",
+        "IMMATRICULATION", "NUMERO_VIN", "NUMERO_FORMULE",
+    )
+    # Champs de carte grise : même plaque écrite différemment -> même jeton ; valeur fictive de même forme.
+    for field in ("IMMATRICULATION", "NUMERO_VIN", "NUMERO_FORMULE"):
+        assert catalog.strategy(field) == "alphanumerique" and catalog.substitution(field) == "generique"
     assert catalog.strategy("NIR") == "alphanumerique"
     assert catalog.strategy("TELEPHONE") == "telephone"
     assert catalog.strategy("DATE_NAISSANCE") == "date"

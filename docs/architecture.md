@@ -417,6 +417,7 @@ pseudonymised/
 ├── optique/
 ├── kinesitherapie/
 ├── psychologie/
+├── carte-grise/
 └── non-classe/
 quarantine/
 ├── dentaire/       <chemin>.<ext> (original) · <chemin>.<ext>.motif.json
