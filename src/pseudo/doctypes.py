@@ -26,6 +26,7 @@ class DocTypeCatalogError(CatalogError):
 
 @dataclass(frozen=True)
 class DocTypeDef:
+    """Type de document du référentiel : code, libellé et sous-dossier de sortie."""
     type: str
     label: str
     folder: str
@@ -33,13 +34,16 @@ class DocTypeDef:
 
 @dataclass(frozen=True)
 class DocTypeCatalog:
+    """Référentiel des types de document (types-documents.md)."""
     doctypes: tuple[DocTypeDef, ...]
 
     @property
     def types(self) -> tuple[str, ...]:
+        """Codes des types déclarés, dans l'ordre du fichier."""
         return tuple(d.type for d in self.doctypes)
 
     def folder(self, doc_type: str) -> str | None:
+        """Sous-dossier d'un type, ou None s'il n'est pas déclaré."""
         for d in self.doctypes:
             if d.type == doc_type:
                 return d.folder
@@ -51,10 +55,15 @@ class DocTypeCatalog:
 
 
 def default_folder(doc_type: str) -> str:
+    """Sous-dossier par défaut d'un type : DENTAIRE_ORTHO -> dentaire-ortho."""
     return doc_type.lower().replace("_", "-")
 
 
 def parse_doctypes(markdown: str) -> DocTypeCatalog:
+    """Lit types-documents.md et vérifie les dossiers (format, doublons).
+
+    Lève DocTypeCatalogError avec toutes les erreurs trouvées.
+    """
     errors: list[str] = []
     doctypes: list[DocTypeDef] = []
     sections = parse_sections(markdown, properties={"dossier"}, kind="type de document", errors=errors)

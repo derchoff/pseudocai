@@ -1,9 +1,9 @@
-# Storage incoming/ (BlobCreated) -> Event Grid -> Service Bus -> routeur -> files par étape
+# Storage d'origine, container d'entrée (BlobCreated) -> Event Grid -> Service Bus -> routeur -> files par étape
 
 resource "azurerm_servicebus_namespace" "main" {
   name                          = "sb-${local.base}-${random_string.suffix.result}"
-  location                      = azurerm_resource_group.main.location
-  resource_group_name           = azurerm_resource_group.main.name
+  location                      = local.location
+  resource_group_name           = local.resource_group_name
   sku                           = local.private ? "Premium" : "Standard" # private endpoint = Premium
   capacity                      = local.private ? 1 : 0
   premium_messaging_partitions  = local.private ? 1 : 0
@@ -60,11 +60,16 @@ locals {
   accepted_extensions = concat([".pdf"], var.enable_image_processing ? var.image_extensions : [])
 }
 
-resource "azurerm_eventgrid_system_topic" "data" {
-  name                = "egst-${local.base}-data"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  source_resource_id  = azurerm_storage_account.data.id
+# Topic système du compte d'origine (un seul autorisé par compte Azure) : créé dans le resource
+# group du compte, ou réutilisé s'il existe déjà (source_system_topic_name).
+resource "azurerm_eventgrid_system_topic" "source" {
+  count    = var.source_system_topic_name == null ? 1 : 0
+  provider = azurerm.source
+  # Nom historique conservé pour le compte de données : pas de recréation lors de la mise à jour.
+  name                = local.source_external ? "egst-${local.base}-source" : "egst-${local.base}-data"
+  location            = local.source_location
+  resource_group_name = local.source_resource_group_name
+  source_resource_id  = local.source_account_id
   topic_type          = "Microsoft.Storage.StorageAccounts"
   tags                = local.tags
 
@@ -73,22 +78,47 @@ resource "azurerm_eventgrid_system_topic" "data" {
   }
 }
 
+data "azurerm_eventgrid_system_topic" "source" {
+  count               = var.source_system_topic_name == null ? 0 : 1
+  provider            = azurerm.source
+  name                = var.source_system_topic_name
+  resource_group_name = local.source_resource_group_name
+}
+
+moved {
+  from = azurerm_eventgrid_system_topic.data
+  to   = azurerm_eventgrid_system_topic.source[0]
+}
+
+locals {
+  source_topic_name = (
+    var.source_system_topic_name == null ? azurerm_eventgrid_system_topic.source[0].name : data.azurerm_eventgrid_system_topic.source[0].name
+  )
+  source_topic_principal_id = (
+    var.source_system_topic_name == null
+    ? azurerm_eventgrid_system_topic.source[0].identity[0].principal_id
+    : one(data.azurerm_eventgrid_system_topic.source[0].identity[*].principal_id)
+  )
+}
+
 resource "azurerm_role_assignment" "eventgrid_sb_sender" {
   scope                = azurerm_servicebus_queue.incoming_events.id
   role_definition_name = "Azure Service Bus Data Sender"
-  principal_id         = azurerm_eventgrid_system_topic.data.identity[0].principal_id
+  principal_id         = local.source_topic_principal_id
 }
 
 resource "azurerm_eventgrid_system_topic_event_subscription" "incoming_created" {
-  name                 = "incoming-created-to-servicebus"
-  system_topic         = azurerm_eventgrid_system_topic.data.name
-  resource_group_name  = azurerm_resource_group.main.name
+  provider = azurerm.source
+  # Nom propre au déploiement sur un topic partagé (plusieurs environnements sur le même compte).
+  name                 = var.source_system_topic_name == null ? "incoming-created-to-servicebus" : "${local.base}-to-servicebus"
+  system_topic         = local.source_topic_name
+  resource_group_name  = local.source_resource_group_name
   service_bus_queue_id = azurerm_servicebus_queue.incoming_events.id
 
   included_event_types = ["Microsoft.Storage.BlobCreated"]
 
   subject_filter {
-    subject_begins_with = "/blobServices/default/containers/${local.containers.incoming}/blobs/"
+    subject_begins_with = "/blobServices/default/containers/${local.source_container}/blobs/"
     case_sensitive      = false
   }
 

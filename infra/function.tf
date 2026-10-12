@@ -1,5 +1,5 @@
 # Deux Function Apps Flex Consumption :
-# - principale : étape 1 (routage incoming/) et étape 3 (pseudonymisation) ;
+# - principale : étape 1 (routage du container d'entrée) et étape 3 (pseudonymisation) ;
 # - images (si enable_image_processing) : étape 2 (préparation des images, dépendances OpenCV).
 
 locals {
@@ -12,7 +12,8 @@ locals {
     IMAGE_QUEUE_NAME                              = azurerm_servicebus_queue.image_jobs.name
 
     STORAGE_ACCOUNT_URL         = azurerm_storage_account.data.primary_blob_endpoint
-    INCOMING_CONTAINER          = local.containers.incoming
+    SOURCE_STORAGE_ACCOUNT_URL  = local.source_blob_endpoint
+    INCOMING_CONTAINER          = local.source_container
     WORK_CONTAINER              = local.containers.work
     OUTPUT_CONTAINER            = local.containers.pseudonymised
     QUARANTINE_CONTAINER        = local.containers.quarantine
@@ -37,8 +38,8 @@ module "function_main" {
 
   name                           = "func-${local.base}-${random_string.suffix.result}"
   plan_name                      = "asp-${local.base}"
-  resource_group_name            = azurerm_resource_group.main.name
-  location                       = azurerm_resource_group.main.location
+  resource_group_name            = local.resource_group_name
+  location                       = local.location
   subscription_id                = var.subscription_id
   storage_account_name           = azurerm_storage_account.func.name
   storage_blob_endpoint          = azurerm_storage_account.func.primary_blob_endpoint
@@ -106,8 +107,8 @@ module "function_images" {
 
   name                           = "func-${local.base}-${random_string.suffix.result}-img"
   plan_name                      = "asp-${local.base}-img"
-  resource_group_name            = azurerm_resource_group.main.name
-  location                       = azurerm_resource_group.main.location
+  resource_group_name            = local.resource_group_name
+  location                       = local.location
   subscription_id                = var.subscription_id
   storage_account_name           = azurerm_storage_account.func.name
   storage_blob_endpoint          = azurerm_storage_account.func.primary_blob_endpoint

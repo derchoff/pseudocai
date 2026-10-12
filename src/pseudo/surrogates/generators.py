@@ -48,20 +48,24 @@ POSTCODE_CITY_RE = re.compile(r"(?P<cp>\b\d{5}\b)(?P<space>\s+)(?P<city>[^\d,]+?
 
 @lru_cache(maxsize=None)
 def _words(name: str) -> tuple[str, ...]:
+    """Lignes non vides d'un fichier de data/ (listes de prénoms, noms, voies)."""
     return tuple(line.strip() for line in (DATA / name).read_text(encoding="utf-8").splitlines() if line.strip())
 
 
 @lru_cache(maxsize=None)
 def _communes() -> tuple[tuple[str, str], ...]:
+    """Couples (code postal, commune) de communes.csv."""
     return tuple(tuple(line.split(";", 1)) for line in _words("communes.csv"))
 
 
 def _fold(text: str) -> str:
+    """Minuscules sans accents, pour comparer des noms."""
     return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c)).casefold()
 
 
 @lru_cache(maxsize=None)
 def _gender_index() -> dict[str, str]:
+    """Prénom replié -> « m » ou « f », d'après les listes de prénoms."""
     index = {_fold(n): "f" for n in _words("prenoms_feminins.txt")}
     index.update({_fold(n): "m" for n in _words("prenoms_masculins.txt")})
     return index
@@ -106,11 +110,13 @@ def generic(value: str, rng: random.Random) -> str:
 
 
 def gender_of(first_name: str, hint: str | None, rng: random.Random) -> str:
+    """Genre du prénom : listes connues, sinon indice (civilité), sinon au hasard."""
     first = re.split(r"[-\s]", first_name.strip())[0]
     return _gender_index().get(_fold(first)) or hint or rng.choice("mf")
 
 
 def first_name(value: str, rng: random.Random, hint: str | None = None) -> str:
+    """Prénom fictif du même genre ; garde l'initiale seule et les prénoms composés."""
     gender = gender_of(value, hint, rng)
     names = _words("prenoms_masculins.txt" if gender == "m" else "prenoms_feminins.txt")
     stripped = value.strip()
@@ -124,6 +130,7 @@ def first_name(value: str, rng: random.Random, hint: str | None = None) -> str:
 
 
 def last_name(value: str, rng: random.Random) -> str:
+    """Nom fictif ; garde les noms composés et la casse."""
     names = _words("noms.txt")
     stripped = value.strip()
     new = "-".join(rng.sample(names, 2)) if "-" in stripped else rng.choice(names)
@@ -143,6 +150,10 @@ YearMonth = Callable[[int, int], tuple[int, int]]  # (aa, mm d'origine) -> (ann�
 
 
 def birth_date(value: str, rng: random.Random, year_month: YearMonth) -> str:
+    """Date fictive au même format (12/03/1985, 12 mars 1985, 1985-03-12, 03/1985).
+
+    Année et mois viennent de year_month, pour concorder avec le NIR fictif.
+    """
     v = value.strip()
     m = re.fullmatch(r"(\d{1,2})(\s?[/.\-]\s?)(\d{1,2})(\s?[/.\-]\s?)(\d{4}|\d{2})", v)
     if m:
@@ -174,6 +185,7 @@ def birth_date(value: str, rng: random.Random, year_month: YearMonth) -> str:
 
 
 def _month_index(name: str) -> int | None:
+    """Numéro (0-11) d'un nom de mois, complet ou abrégé, ou None."""
     folded = _fold(name).rstrip(".")
     for i, (full, short) in enumerate(zip(MONTHS, MONTHS_SHORT)):
         if folded in (_fold(full), _fold(short)):
@@ -182,6 +194,7 @@ def _month_index(name: str) -> int | None:
 
 
 def nir_key(first13: str) -> str:
+    """Clé de contrôle du NIR : 97 - (13 premiers chiffres modulo 97)."""
     return f"{97 - int(first13) % 97:02d}"
 
 
@@ -204,6 +217,7 @@ def nir(value: str, rng: random.Random, year_month: YearMonth) -> str:
 
 
 def phone(value: str, rng: random.Random) -> str:
+    """Numéro fictif dans les tranches réservées à la fiction (ARCEP), même mise en forme."""
     digits = re.sub(r"\D", "", value)
     if digits.startswith("0033"):
         national, rebuild = "0" + digits[4:], lambda n: "0033" + n[1:]
@@ -221,6 +235,7 @@ def phone(value: str, rng: random.Random) -> str:
 
 
 def email(value: str, rng: random.Random) -> str:
+    """Adresse fictive prénom.nom@example.com, avec le même séparateur."""
     local = value.split("@", 1)[0]
     separator = "." if "." in local else "_" if "_" in local else "-" if "-" in local else ""
     first = _ascii(rng.choice(_words("prenoms_masculins.txt") + _words("prenoms_feminins.txt")))
@@ -232,6 +247,7 @@ def email(value: str, rng: random.Random) -> str:
 
 
 def _ascii(text: str) -> str:
+    """Lettres a-z seulement (partie locale d'un e-mail)."""
     return re.sub(r"[^a-z]", "", _fold(text))
 
 
@@ -242,6 +258,7 @@ def address(value: str, rng: random.Random) -> str:
     replaced = False
 
     def street(m: re.Match) -> str:
+        """Remplace numéro et nom de voie, en gardant le type de voie (rue, avenue…)."""
         nonlocal replaced
         replaced = True
         num = m.group("num")
@@ -250,6 +267,7 @@ def address(value: str, rng: random.Random) -> str:
         return f"{new_num}{m.group('ind') or ''}{m.group('sep')}{m.group('type')}{m.group('space')}{name}"
 
     def city(m: re.Match) -> str:
+        """Remplace code postal et commune par un vrai couple existant."""
         nonlocal replaced
         replaced = True
         cp, name = rng.choice(_communes())
@@ -269,4 +287,5 @@ def address(value: str, rng: random.Random) -> str:
 
 
 def today() -> date:
+    """Date du jour."""
     return date.today()

@@ -27,12 +27,14 @@ FACTORY = SurrogateFactory(b"k" * 32, current_year=2026)
 
 @pytest.fixture
 def settings(monkeypatch):
+    """Réglages en mode substitution, images activées."""
     monkeypatch.setenv("PSEUDO_OUTPUT_MODE", "substitution")
     monkeypatch.setenv("IMAGE_PROCESSING_ENABLED", "true")
     return Settings.from_env()
 
 
 def gen(generator, value):
+    """Valeur fictive de value avec le générateur donné (clé = value)."""
     return FACTORY.generate(generator, value, key=value)
 
 
@@ -153,6 +155,7 @@ def test_photo_is_published_with_realistic_values_and_pixel_positions(settings):
     runtime = Runtime(settings=settings, services=svc, mapping_store=store, blob_service=blobs)
 
     def prepare(job_json, ctx):
+        """Prépare l'image puis branche l'OCR simulé sur la géométrie obtenue."""
         job = handle_image_job(job_json, ctx)
         svc.ocr = PhotoOcr(p, load_geometry(ctx.blob_service.data("work", job.prepared.transforms)))
         return job
@@ -225,6 +228,7 @@ def test_replacement_on_the_next_line_does_not_erase_the_previous_one():
     from pseudo.raster import paint_spans
 
     def item(n, y, text, surrogate):
+        """Ligne n d'un seul mot à la hauteur y, et sa zone à remplacer par surrogate."""
         word = Word(text=text, rect=(20.0, y, 20.0 + 15 * len(text), y + 20), start=0, end=len(text))
         line = Line(id=f"l{n}", page=0, text=text, words=[word], source="ocr")
         return line, Span(line_id=line.id, start=0, end=len(text), type="NOM", source="test",

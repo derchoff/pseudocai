@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from .classification import STATUT_NON_APPLICABLE, unclassified
 from .events import parse_blob_event
 from .formats import PDF, extension, format_from_name, is_image
 from .jobs import ORIGIN_IMAGE, ORIGIN_PDF, Job
-from .outputs import STAGE_ROUTING, StorageContext, previous_trace, quarantine
+from .outputs import STAGE_ROUTING, StorageContext, previous_trace, quarantine, source_blob
 
 log = logging.getLogger(__name__)
 
@@ -28,19 +29,24 @@ QUEUE_IMAGE = "image"
 
 @dataclass
 class RouteResult:
+    """Résultat du routage : statut, file de destination et job créé."""
     status: str  # "routed" | "quarantine" | "ignored" | "missing"
     queue: str | None = None  # QUEUE_PDF | QUEUE_IMAGE
     job: Job | None = None
 
 
 def route_event(body: bytes | str, ctx: StorageContext) -> RouteResult:
+    """Décide du sort d'un fichier déposé dans incoming/, d'après son extension uniquement.
+
+    PDF -> file pdf-jobs, image -> file image-jobs. Format inconnu, images désactivées ou fichier trop gros -> quarantaine.
+    """
     settings = ctx.settings
     event = parse_blob_event(body)
-    if event.container != settings.incoming_container:
-        log.warning("Événement ignoré (container %s)", event.container)
+    if event.container != settings.incoming_container or not _same_account(event.url, settings.source_storage_account_url):
+        log.warning("Événement ignoré (compte ou container inattendu : %s)", event.container)
         return RouteResult("ignored")
 
-    blob = ctx.blob_service.get_blob_client(event.container, event.name)
+    blob = source_blob(ctx, event.container, event.name)
     if not blob.exists():
         log.warning("Fichier introuvable dans incoming/ (supprimé entre-temps)")
         return RouteResult("missing")
@@ -73,3 +79,10 @@ def route_event(body: bytes | str, ctx: StorageContext) -> RouteResult:
     queue = QUEUE_PDF if origin == ORIGIN_PDF else QUEUE_IMAGE
     log.info("Document routé doc=%s format=%s file=%s job=%s", job.document_id, fmt, queue, job.job_id)
     return RouteResult("routed", queue=queue, job=job)
+
+
+def _same_account(event_url: str, account_url: str | None) -> bool:
+    """Vrai si l'événement vient du compte d'origine configuré (toujours vrai sans URL configurée)."""
+    if not account_url:
+        return True
+    return urlparse(event_url).hostname.lower() == (urlparse(account_url).hostname or "").lower()

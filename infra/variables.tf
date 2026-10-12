@@ -39,6 +39,66 @@ variable "tags" {
   default     = {}
 }
 
+variable "resource_group_name" {
+  description = "Resource group de déploiement. null : rg-<project>-<environment>."
+  type        = string
+  default     = null
+}
+
+variable "create_resource_group" {
+  description = "true : Terraform crée le resource group. false : il existe déjà (Terraform ne le crée ni ne le supprime)."
+  type        = bool
+  default     = true
+}
+
+# ---------------------------------------------------------------------------- Storage d'origine
+
+variable "source_storage_account_id" {
+  description = <<-EOT
+    ID du compte de stockage EXISTANT où arrivent les documents, éventuellement dans un autre resource
+    group ou un autre abonnement (même tenant). Le déploiement y pose le déclencheur Event Grid et
+    donne aux Functions l'accès en lecture au container source_container_name.
+    null (défaut) : container d'entrée dans le compte « data » créé par ce déploiement.
+  EOT
+  type        = string
+  default     = null
+
+  validation {
+    condition = var.source_storage_account_id == null || can(regex(
+      "(?i)^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\\.Storage/storageAccounts/[^/]+$",
+      var.source_storage_account_id,
+    ))
+    error_message = "source_storage_account_id : /subscriptions/<id>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/<nom>."
+  }
+}
+
+variable "source_container_name" {
+  description = "Container d'arrivée des documents (dans le compte d'origine)."
+  type        = string
+  default     = "incoming"
+
+  validation {
+    condition     = can(regex("^[a-z0-9](?:[a-z0-9]|-[a-z0-9]){2,62}$", var.source_container_name))
+    error_message = "source_container_name : 3 à 63 caractères, minuscules, chiffres et tirets isolés."
+  }
+}
+
+variable "create_source_container" {
+  description = "Compte d'origine existant : true pour que Terraform crée le container s'il n'existe pas encore."
+  type        = bool
+  default     = false
+}
+
+variable "source_system_topic_name" {
+  description = <<-EOT
+    Compte d'origine existant : nom d'un topic système Event Grid DÉJÀ rattaché à ce compte (Azure n'en
+    autorise qu'un par compte), dans le resource group du compte. Il doit avoir une identité managée
+    système. null : le déploiement crée le topic.
+  EOT
+  type        = string
+  default     = null
+}
+
 # ---------------------------------------------------------------------------- Réseau
 
 variable "enable_private_networking" {
@@ -152,13 +212,13 @@ variable "servicebus_max_delivery_count" {
 }
 
 variable "delete_source_after_success" {
-  description = "Supprime le PDF d'entrée après traitement (succès ou quarantaine)."
+  description = "Supprime le document d'entrée après traitement (succès ou quarantaine). Donne alors aux Functions le droit d'écriture sur le container d'entrée (lecture seule sinon)."
   type        = bool
   default     = false
 }
 
 variable "incoming_retention_days" {
-  description = "Suppression automatique des fichiers déposés dans incoming/ après N jours."
+  description = "Suppression automatique des fichiers déposés dans incoming/ après N jours (compte « data » uniquement : rien n'est purgé sur un compte d'origine existant)."
   type        = number
   default     = 7
 }

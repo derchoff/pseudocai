@@ -28,6 +28,7 @@ STATUT_NON_APPLICABLE = "non_applicable"  # document rejeté avant extraction (i
 
 @dataclass
 class TypeScore:
+    """Un type de document proposé par l'agent, avec sa confiance et les indices relevés."""
     type: str
     confidence: float
     indices: list[str] = field(default_factory=list)
@@ -35,6 +36,7 @@ class TypeScore:
 
 @dataclass
 class Classification:
+    """Décision de classification : type principal, dossier de sortie, statut et types retenus."""
     principal: str
     dossier: str  # "" = pas de sous-dossier (classification désactivée)
     statut: str
@@ -45,6 +47,7 @@ class Classification:
     prompt_sha256: str | None = None
 
     def to_dict(self) -> dict:
+        """Version dictionnaire (rapport JSON, trace Cosmos DB)."""
         return asdict(self)
 
     def metadata(self) -> dict[str, str]:
@@ -57,10 +60,12 @@ class Classification:
 
 
 def default_ascii(value: str) -> str:
+    """Supprime les caractères non ASCII (métadonnées de blob)."""
     return value.encode("ascii", "ignore").decode("ascii")
 
 
 def unclassified(statut: str, unclassified_folder: str, prompt_sha256: str | None = None) -> Classification:
+    """Classification « non classé » (dossier vide si la classification est désactivée)."""
     folder = "" if statut == STATUT_DESACTIVEE else unclassified_folder
     return Classification(principal=UNCLASSIFIED, dossier=folder, statut=statut, prompt_sha256=prompt_sha256)
 
@@ -74,6 +79,10 @@ def decide(
     unclassified_folder: str,
     prompt_sha256: str | None = None,
 ) -> Classification:
+    """Choisit le type principal et les types secondaires à partir des scores de l'agent et des seuils.
+
+    Les types inconnus du référentiel sont ignorés. Sans type assez sûr, le document est « non classé ».
+    """
     allowed = set(catalog.types)
     best: dict[str, TypeScore] = {}
     unclassified_score = 0.0

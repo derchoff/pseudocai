@@ -26,13 +26,17 @@ OLDEST_BIRTH_YEAR = 1925
 
 
 class SurrogateFactory:
+    """Fabrique de valeurs fictives réalistes, déterministes pour une même clé."""
+
     def __init__(self, hmac_key: bytes, current_year: int | None = None):
+        """hmac_key : clé secrète (256 bits minimum) ; current_year : année de référence (tests)."""
         if len(hmac_key) < 32:
             raise ValueError("La clé HMAC doit faire au moins 256 bits")
         self._key = hmac_key
         self._current_year = current_year or g.today().year
 
     def _rng(self, *parts: object) -> random.Random:
+        """Générateur aléatoire initialisé par HMAC des paramètres : mêmes paramètres -> mêmes tirages."""
         digest = hmac.new(self._key, "|".join(map(str, parts)).encode("utf-8"), hashlib.sha256).digest()
         return random.Random(int.from_bytes(digest, "big"))
 
@@ -43,6 +47,10 @@ class SurrogateFactory:
         return rng.randint(OLDEST_BIRTH_YEAR, self._current_year - 1), rng.randint(1, 12)
 
     def generate(self, generator: str, value: str, *, key: str, attempt: int = 0, gender_hint: str | None = None) -> str:
+        """Valeur fictive pour value avec le générateur demandé.
+
+        key fixe le tirage ; attempt donne une autre valeur en cas de collision.
+        """
         rng = self._rng(generator, key, attempt)
         if generator == "nom":
             return g.last_name(value, rng)
@@ -63,6 +71,7 @@ class SurrogateFactory:
         return g.generic(value, rng)
 
     def _year_month(self, attempt: int) -> g.YearMonth:
+        """Correspondance année/mois partagée par la date de naissance et le NIR."""
         return lambda yy, mm: self.birth_year_month(yy, mm, salt=attempt)
 
     def unique(

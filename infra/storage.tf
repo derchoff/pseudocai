@@ -1,8 +1,9 @@
-# Compte "data" : dépôt (incoming), fichiers intermédiaires (work), sorties, quarantaine et prompts.
+# Compte "data" : dépôt (incoming, sauf compte d'origine existant : voir source.tf), fichiers
+# intermédiaires (work), sorties, quarantaine et prompts.
 resource "azurerm_storage_account" "data" {
   name                            = "st${local.compact}data"
-  location                        = azurerm_resource_group.main.location
-  resource_group_name             = azurerm_resource_group.main.name
+  location                        = local.location
+  resource_group_name             = local.resource_group_name
   account_tier                    = "Standard"
   account_replication_type        = "ZRS"
   account_kind                    = "StorageV2"
@@ -42,16 +43,21 @@ resource "azurerm_storage_container" "data" {
 resource "azurerm_storage_management_policy" "data" {
   storage_account_id = azurerm_storage_account.data.id
 
-  rule {
-    name    = "purge-incoming"
-    enabled = true
-    filters {
-      prefix_match = ["${local.containers.incoming}/"]
-      blob_types   = ["blockBlob"]
-    }
-    actions {
-      base_blob {
-        delete_after_days_since_modification_greater_than = var.incoming_retention_days
+  # Uniquement si le container d'entrée est dans ce compte : un compte d'origine existant garde
+  # ses propres règles.
+  dynamic "rule" {
+    for_each = local.source_external ? [] : [local.containers.incoming]
+    content {
+      name    = "purge-incoming"
+      enabled = true
+      filters {
+        prefix_match = ["${rule.value}/"]
+        blob_types   = ["blockBlob"]
+      }
+      actions {
+        base_blob {
+          delete_after_days_since_modification_greater_than = var.incoming_retention_days
+        }
       }
     }
   }
@@ -90,8 +96,8 @@ resource "azurerm_storage_management_policy" "data" {
 # Compte "func" : stockage interne du runtime Functions et paquet de déploiement.
 resource "azurerm_storage_account" "func" {
   name                            = "st${local.compact}func"
-  location                        = azurerm_resource_group.main.location
-  resource_group_name             = azurerm_resource_group.main.name
+  location                        = local.location
+  resource_group_name             = local.resource_group_name
   account_tier                    = "Standard"
   account_replication_type        = "LRS"
   min_tls_version                 = "TLS1_2"
@@ -124,10 +130,10 @@ resource "azurerm_storage_container" "deployments_images" {
 
 # ------------------------------------------------------------------ RBAC stockage
 
-# App principale : lecture des entrées (et suppression si delete_source_after_success), lecture et
-# purge des fichiers intermédiaires, écriture des sorties et de la quarantaine, lecture des prompts.
+# App principale : lecture et purge des fichiers intermédiaires, écriture des sorties et de la
+# quarantaine, lecture des prompts. L'accès au container d'entrée est dans source.tf.
 resource "azurerm_role_assignment" "func_data_containers" {
-  for_each             = toset(["incoming", "work", "pseudonymised", "quarantine"])
+  for_each             = toset(["work", "pseudonymised", "quarantine"])
   scope                = azurerm_storage_container.data[each.key].id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_user_assigned_identity.func.principal_id
@@ -158,10 +164,10 @@ resource "azurerm_role_assignment" "func_storage_table" {
   principal_id         = azurerm_user_assigned_identity.func.principal_id
 }
 
-# App images : lecture des entrées, écriture des fichiers intermédiaires et de la quarantaine,
-# nettoyage des sorties d'un traitement précédent (retraitement).
+# App images : écriture des fichiers intermédiaires et de la quarantaine, nettoyage des sorties
+# d'un traitement précédent (retraitement). L'accès au container d'entrée est dans source.tf.
 resource "azurerm_role_assignment" "images_data_containers" {
-  for_each             = var.enable_image_processing ? toset(["incoming", "work", "pseudonymised", "quarantine"]) : toset([])
+  for_each             = var.enable_image_processing ? toset(["work", "pseudonymised", "quarantine"]) : toset([])
   scope                = azurerm_storage_container.data[each.key].id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_user_assigned_identity.func_images[0].principal_id

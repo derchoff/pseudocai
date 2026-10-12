@@ -30,6 +30,7 @@ class CatalogError(ValueError):
 
 @dataclass(frozen=True)
 class Section:
+    """Section `## TYPE — Libellé` d'un référentiel Markdown, avec ses propriétés `**Clé** : valeur`."""
     type: str
     label: str
     lineno: int
@@ -93,5 +94,6 @@ def parse_sections(markdown: str, *, properties: set[str], kind: str, errors: li
 
 
 def raise_if_errors(errors: list[str], title: str, error_class: type[CatalogError] = CatalogError) -> None:
+    """Lève error_class avec la liste des erreurs, s'il y en a."""
     if errors:
         raise error_class(f"{title} invalide :\n- " + "\n- ".join(errors))

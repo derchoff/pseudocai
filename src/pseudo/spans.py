@@ -28,6 +28,10 @@ def _flex_pattern(needle: str, word_boundary: bool = False) -> re.Pattern | None
 
 
 def find_strict(haystack: str, needle: str) -> list[tuple[int, int]]:
+    """Positions de needle dans haystack, sans tenir compte de la casse.
+
+    À défaut, tolère des espaces ajoutés ou manquants (fréquents à l'OCR).
+    """
     occurrences = [(m.start(), m.end()) for m in re.finditer(re.escape(needle), haystack, re.IGNORECASE)]
     if occurrences:
         return occurrences
@@ -36,6 +40,7 @@ def find_strict(haystack: str, needle: str) -> list[tuple[int, int]]:
 
 
 def find_fuzzy(haystack: str, needle: str, min_score: float) -> list[tuple[int, int]]:
+    """Meilleure position approchée de needle (score >= min_score), étendue aux mots entiers."""
     if len(needle) < 4 or not haystack:
         return []
     lowered = haystack.lower()
@@ -55,6 +60,7 @@ def find_fuzzy(haystack: str, needle: str, min_score: float) -> list[tuple[int, 
 
 
 def trim(text: str, a: int, b: int) -> tuple[int, int]:
+    """Retire espaces et ponctuation en début et fin de [a, b[."""
     while a < b and text[a] in _EDGE_CHARS:
         a += 1
     while b > a and text[b - 1] in _EDGE_CHARS:
@@ -94,6 +100,7 @@ def resolve_entities(
 
 
 def _group_values(entities: list[Entity], doc: DocumentContent) -> dict[str, str]:
+    """Valeur complète de chaque groupe d'entités (valeur répartie sur plusieurs lignes)."""
     groups: dict[str, list[Entity]] = defaultdict(list)
     for e in entities:
         if e.group:
@@ -156,6 +163,7 @@ def merge_spans(spans: list[Span], doc: DocumentContent) -> list[Span]:
 
 
 def _uncovered_runs(covered: list[bool], a: int, b: int) -> list[tuple[int, int]]:
+    """Intervalles de [a, b[ qui ne sont pas encore couverts."""
     runs, start = [], None
     for i in range(a, b):
         if not covered[i] and start is None:
@@ -169,6 +177,7 @@ def _uncovered_runs(covered: list[bool], a: int, b: int) -> list[tuple[int, int]
 
 
 def coverage_signature(spans: list[Span]) -> set[tuple[str, int]]:
+    """Ensemble des caractères (ligne, position) couverts par les zones."""
     return {(s.line_id, i) for s in spans for i in range(s.start, s.end)}
 
 
@@ -177,15 +186,18 @@ def coverage_signature(spans: list[Span]) -> set[tuple[str, int]]:
 
 @dataclass
 class PseudoLine:
+    """Ligne pseudonymisée, avec la correspondance des positions vers la ligne d'origine."""
     id: str
     text: str
     # (début_pseudo, fin_pseudo, début_original, fin_original, est_un_jeton)
     segments: list[tuple[int, int, int, int, bool]]
 
     def to_original(self, a: int, b: int) -> tuple[int, int]:
+        """Convertit [a, b[ de la ligne pseudonymisée en positions dans la ligne d'origine."""
         return self._map(a, is_end=False), self._map(b, is_end=True)
 
     def _map(self, pos: int, is_end: bool) -> int:
+        """Position d'origine d'une position du texte pseudonymisé (un jeton compte en entier)."""
         for ps, pe, os_, oe, is_token in self.segments:
             if ps <= pos < pe or (is_end and pos == pe):
                 if is_token:
@@ -195,12 +207,14 @@ class PseudoLine:
 
 
 def pseudonymise_line(line: Line, spans: list[Span]) -> PseudoLine:
+    """Remplace les zones de la ligne par leur remplacement (valeur fictive ou jeton)."""
     parts: list[str] = []
     segments = []
     pos_orig = 0
     pos_pseudo = 0
 
     def add(text: str, os_: int, oe: int, is_token: bool) -> None:
+        """Ajoute un morceau au texte et note sa correspondance avec l'original."""
         nonlocal pos_pseudo
         if not text and not is_token:
             return
@@ -217,6 +231,7 @@ def pseudonymise_line(line: Line, spans: list[Span]) -> PseudoLine:
 
 
 def pseudonymise_document(doc: DocumentContent, spans: list[Span]) -> list[PseudoLine]:
+    """Pseudonymise toutes les lignes du document."""
     by_line: dict[str, list[Span]] = defaultdict(list)
     for s in spans:
         by_line[s.line_id].append(s)
@@ -224,6 +239,7 @@ def pseudonymise_document(doc: DocumentContent, spans: list[Span]) -> list[Pseud
 
 
 def render_text(doc: DocumentContent, pseudo_lines: list[PseudoLine]) -> str:
+    """Texte pseudonymisé complet, page par page (fichier .pseudonymise.txt)."""
     by_id = {pl.id: pl for pl in pseudo_lines}
     out = []
     for page in doc.pages:

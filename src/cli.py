@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def main() -> int:
+    """Pseudonymise un PDF ou une image en local et écrit les sorties dans --out. Renvoie le code de sortie."""
     parser = argparse.ArgumentParser(description="Pseudonymise localement un PDF ou une image")
     parser.add_argument("document", type=Path)
     parser.add_argument("--out", type=Path, default=Path("sortie"))

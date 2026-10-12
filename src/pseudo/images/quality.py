@@ -19,6 +19,10 @@ def blur_score(image) -> float:
 
 
 def check_quality(image, *, min_short_side: int, blur_threshold: float) -> tuple[list[str], dict]:
+    """Contrôle la résolution et la netteté d'une image.
+
+    Renvoie (motifs de quarantaine, mesures pour le rapport).
+    """
     width, height = image.size
     score = blur_score(image)
     reasons = []

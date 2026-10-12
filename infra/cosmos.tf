@@ -2,8 +2,8 @@
 
 resource "azurerm_cosmosdb_account" "main" {
   name                          = "cosmos-${local.base}-${random_string.suffix.result}"
-  location                      = azurerm_resource_group.main.location
-  resource_group_name           = azurerm_resource_group.main.name
+  location                      = local.location
+  resource_group_name           = local.resource_group_name
   offer_type                    = "Standard"
   kind                          = "GlobalDocumentDB"
   local_authentication_enabled  = false
@@ -21,7 +21,7 @@ resource "azurerm_cosmosdb_account" "main" {
   }
 
   geo_location {
-    location          = azurerm_resource_group.main.location
+    location          = local.location
     failover_priority = 0
   }
 
@@ -33,13 +33,13 @@ resource "azurerm_cosmosdb_account" "main" {
 
 resource "azurerm_cosmosdb_sql_database" "main" {
   name                = "pseudonymisation"
-  resource_group_name = azurerm_resource_group.main.name
+  resource_group_name = local.resource_group_name
   account_name        = azurerm_cosmosdb_account.main.name
 }
 
 resource "azurerm_cosmosdb_sql_container" "mappings" {
   name                = "mappings"
-  resource_group_name = azurerm_resource_group.main.name
+  resource_group_name = local.resource_group_name
   account_name        = azurerm_cosmosdb_account.main.name
   database_name       = azurerm_cosmosdb_sql_database.main.name
   partition_key_paths = ["/id"]
@@ -47,7 +47,7 @@ resource "azurerm_cosmosdb_sql_container" "mappings" {
 
 resource "azurerm_cosmosdb_sql_container" "traces" {
   name                = "traces"
-  resource_group_name = azurerm_resource_group.main.name
+  resource_group_name = local.resource_group_name
   account_name        = azurerm_cosmosdb_account.main.name
   database_name       = azurerm_cosmosdb_sql_database.main.name
   partition_key_paths = ["/documentId"]
@@ -60,14 +60,14 @@ resource "azurerm_cosmosdb_sql_container" "traces" {
 # fiches vivent aussi longtemps que les documents publiés (remplacées à chaque retraitement).
 resource "azurerm_cosmosdb_sql_container" "occurrences" {
   name                = "occurrences"
-  resource_group_name = azurerm_resource_group.main.name
+  resource_group_name = local.resource_group_name
   account_name        = azurerm_cosmosdb_account.main.name
   database_name       = azurerm_cosmosdb_sql_database.main.name
   partition_key_paths = ["/documentId"]
 }
 
 resource "azurerm_cosmosdb_sql_role_assignment" "func" {
-  resource_group_name = azurerm_resource_group.main.name
+  resource_group_name = local.resource_group_name
   account_name        = azurerm_cosmosdb_account.main.name
   role_definition_id  = "${azurerm_cosmosdb_account.main.id}/sqlRoleDefinitions/${local.cosmos_data_contributor}"
   principal_id        = azurerm_user_assigned_identity.func.principal_id
@@ -77,7 +77,7 @@ resource "azurerm_cosmosdb_sql_role_assignment" "func" {
 # App images : traces (quarantine à la préparation) et lecture de la dernière trace (retraitement).
 resource "azurerm_cosmosdb_sql_role_assignment" "func_images" {
   count               = var.enable_image_processing ? 1 : 0
-  resource_group_name = azurerm_resource_group.main.name
+  resource_group_name = local.resource_group_name
   account_name        = azurerm_cosmosdb_account.main.name
   role_definition_id  = "${azurerm_cosmosdb_account.main.id}/sqlRoleDefinitions/${local.cosmos_data_contributor}"
   principal_id        = azurerm_user_assigned_identity.func_images[0].principal_id
@@ -86,7 +86,7 @@ resource "azurerm_cosmosdb_sql_role_assignment" "func_images" {
 
 resource "azurerm_cosmosdb_sql_role_assignment" "reidentification" {
   for_each            = toset(var.reidentification_principal_ids)
-  resource_group_name = azurerm_resource_group.main.name
+  resource_group_name = local.resource_group_name
   account_name        = azurerm_cosmosdb_account.main.name
   role_definition_id  = "${azurerm_cosmosdb_account.main.id}/sqlRoleDefinitions/${local.cosmos_data_reader}"
   principal_id        = each.value

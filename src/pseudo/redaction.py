@@ -30,6 +30,7 @@ MARGIN = 0.8  # points
 
 
 def _fontsize(token: str, rect: pymupdf.Rect) -> float:
+    """Taille de police qui fait tenir le jeton dans la zone."""
     unit_width = pymupdf.get_text_length(token, fontname=FONT, fontsize=1)
     size = min(rect.height * 0.7, rect.width * 0.95 / unit_width if unit_width else rect.height)
     return max(size, 2.0)
@@ -43,6 +44,7 @@ def normalize_rotation(doc: pymupdf.Document) -> None:
 
 
 def write_token(page: pymupdf.Page, rect: pymupdf.Rect, token: str) -> None:
+    """Écrit le jeton centré dans la zone."""
     size = _fontsize(token, rect)
     width = pymupdf.get_text_length(token, fontname=FONT, fontsize=size)
     x = rect.x0 + max(0.0, (rect.width - width) / 2)
@@ -105,6 +107,7 @@ def write_replacement(
     style: TextStyle | None = None,
     max_width: float | None = None,
 ) -> None:
+    """Écrit la valeur fictive si elle existe, sinon le jeton."""
     if span.surrogate is not None:
         write_surrogate(page, rect, span.surrogate, style, max_width)
     else:
@@ -120,6 +123,7 @@ def available_width(line: Line, span: Span, rect: pymupdf.Rect, page_width: floa
 
 
 def _words_rect(line: Line, span: Span) -> pymupdf.Rect | None:
+    """Rectangle englobant des mots couverts par la zone, ou None."""
     rect = None
     for w in line.words:
         if w.start < span.end and w.end > span.start:
@@ -143,6 +147,10 @@ def span_rects(page: pymupdf.Page | None, line: Line, span: Span) -> list[pymupd
 
 
 def render_pdf(pdf_bytes: bytes, content: DocumentContent, spans: list[Span], dpi: int = 200) -> bytes:
+    """Produit le PDF pseudonymisé : pages natives caviardées, pages scannées redessinées.
+
+    Le document est reconstruit sans métadonnées, liens ni annotations.
+    """
     src = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     # Mêmes préparations que lors de l'extraction, pour que les coordonnées correspondent.
     if hasattr(src, "bake"):
@@ -178,11 +186,16 @@ CORE_VERTICAL_SHRINK = 0.25
 
 
 def _core(rect: pymupdf.Rect) -> pymupdf.Rect:
+    """Zone resserrée verticalement (n'atteint pas les lignes voisines)."""
     inset = rect.height * CORE_VERTICAL_SHRINK
     return pymupdf.Rect(rect.x0, rect.y0 + inset, rect.x1, rect.y1 - inset)
 
 
 def _redact_native(page: pymupdf.Page, items: list[tuple[Line, Span]]) -> None:
+    """Remplace les zones d'une page native.
+
+    Le texte natif est réellement supprimé, le texte des images est effacé dans les pixels, puis le remplacement est écrit.
+    """
     if not items:
         return
     text_boxes: list[tuple] = []

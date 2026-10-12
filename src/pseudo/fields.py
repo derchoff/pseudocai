@@ -51,6 +51,7 @@ class FieldCatalogError(CatalogError):
 
 @dataclass(frozen=True)
 class FieldDef:
+    """Champ à pseudonymiser : code, libellé, normalisation (calcul du jeton) et générateur de valeur fictive."""
     type: str
     label: str
     normalisation: str
@@ -59,13 +60,16 @@ class FieldDef:
 
 @dataclass(frozen=True)
 class FieldCatalog:
+    """Référentiel des champs à pseudonymiser (champs-a-pseudonymiser.md)."""
     fields: tuple[FieldDef, ...]
 
     @property
     def types(self) -> tuple[str, ...]:
+        """Codes des champs déclarés, dans l'ordre du fichier."""
         return tuple(f.type for f in self.fields)
 
     def strategy(self, entity_type: str) -> str:
+        """Normalisation d'un type : celle du référentiel, sinon celle intégrée au code, sinon « texte »."""
         for f in self.fields:
             if f.type == entity_type:
                 return f.normalisation
@@ -84,6 +88,10 @@ class FieldCatalog:
 
 
 def parse_fields(markdown: str) -> FieldCatalog:
+    """Lit champs-a-pseudonymiser.md et vérifie les lignes Normalisation et Substitution.
+
+    Lève FieldCatalogError avec toutes les erreurs trouvées.
+    """
     errors: list[str] = []
     fields: list[FieldDef] = []
     for section in parse_sections(markdown, properties={"normalisation", "substitution"}, kind="champ", errors=errors):

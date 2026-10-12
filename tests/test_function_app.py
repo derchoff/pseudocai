@@ -7,6 +7,7 @@ import pytest
 
 
 def registered(monkeypatch, role):
+    """Noms des Functions enregistrées par function_app pour le rôle donné (None = variable absente)."""
     if role is None:
         monkeypatch.delenv("FUNCTION_APP_ROLE", raising=False)
     else:

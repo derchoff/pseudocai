@@ -47,11 +47,13 @@ def ring_color(pixel, x0: int, y0: int, x1: int, y1: int, width: int, height: in
 
 
 def rect_quad(rect) -> tuple[float, ...]:
+    """Quadrilatère (haut-gauche, haut-droit, bas-droit, bas-gauche) d'un rectangle."""
     x0, y0, x1, y1 = rect
     return (x0, y0, x1, y0, x1, y1, x0, y1)
 
 
 def word_quad(word) -> tuple[float, ...]:
+    """Quadrilatère du mot (celui de l'OCR, sinon son rectangle)."""
     return word.quad or rect_quad(word.rect)
 
 
@@ -66,6 +68,7 @@ def paint_spans(frame, items: list[tuple[Line, Span]], px_per_pt: float) -> None
     from PIL import ImageDraw
 
     def px(quad):
+        """Convertit un quadrilatère de points en pixels."""
         return [v * px_per_pt for v in quad]
 
     # 0. Mesures sur l'image intacte : quadrilatères, couleur du fond, zone d'écriture.
@@ -99,6 +102,7 @@ def paint_spans(frame, items: list[tuple[Line, Span]], px_per_pt: float) -> None
 
 
 def _expand(px: list[float], margin: float) -> list[tuple[float, float]]:
+    """Agrandit un quadrilatère de margin pixels autour de son centre."""
     cx = sum(px[0::2]) / 4
     cy = sum(px[1::2]) / 4
     points = []
@@ -134,6 +138,7 @@ def _draw_in_quad(frame, quad, text: str, draw_text) -> None:
     from PIL import Image, ImageDraw
 
     def dist(a: int, b: int) -> float:
+        """Distance entre deux sommets du quadrilatère."""
         return ((quad[a] - quad[b]) ** 2 + (quad[a + 1] - quad[b + 1]) ** 2) ** 0.5
 
     width = max(1, round(max(dist(0, 2), dist(6, 4))))
@@ -166,6 +171,7 @@ def _fit(draw, text: str, size: int, width: float):
 
 
 def _draw_token(draw, token: str, width: int, height: int) -> None:
+    """Dessine le jeton centré dans la vignette."""
     font = _fit(draw, token, max(6, int(height * 0.6)), width * 0.95)
     draw.text((width / 2, height * 0.78), token, fill=TEXT_RGB + (255,), font=font, anchor="ms")
 
@@ -178,12 +184,14 @@ def _draw_surrogate(draw, text: str, width: int, height: int) -> None:
 
 @lru_cache(maxsize=1)
 def _font_bytes() -> bytes:
+    """Fichier de la police Helvetica fournie par PyMuPDF."""
     # Helvetica embarquée par PyMuPDF (la même que pour les PDF) : la police par défaut de Pillow
     # n'a pas les lettres accentuées.
     return pymupdf.Font("helv").buffer
 
 
 def _font(size: int):
+    """Police Helvetica à la taille demandée, pour Pillow."""
     from PIL import ImageFont
 
     return ImageFont.truetype(io.BytesIO(_font_bytes()), size)

@@ -46,6 +46,7 @@ def nir_key(first13: str) -> int:
 
 
 def _nir_spans(line: Line) -> list[Span]:
+    """NIR de la ligne : clé de contrôle valide, ou contexte sur la ligne (sécu, NIR, carte Vitale…)."""
     spans = []
     has_context = bool(NIR_CONTEXT_RE.search(line.text))
     for m in NIR_RE.finditer(line.text):
@@ -58,6 +59,7 @@ def _nir_spans(line: Line) -> list[Span]:
 
 
 def _birth_date_spans(line: Line) -> list[Span]:
+    """Première date qui suit une mention « né le », « date de naissance »… sur la ligne."""
     ctx = BIRTH_CONTEXT_RE.search(line.text)
     if not ctx:
         return []
@@ -72,6 +74,7 @@ def _birth_date_spans(line: Line) -> list[Span]:
 
 
 def detect_regex(lines: list[Line]) -> list[Span]:
+    """Détections par expressions régulières : e-mail, téléphone français, NIR, date de naissance."""
     spans: list[Span] = []
     for line in lines:
         text = line.text

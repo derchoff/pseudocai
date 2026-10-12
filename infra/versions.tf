@@ -38,3 +38,13 @@ provider "azurerm" {
     }
   }
 }
+
+# Abonnement du compte de stockage d'origine (celui de source_storage_account_id, sinon le même) :
+# le topic Event Grid et les droits d'accès y sont créés.
+provider "azurerm" {
+  alias               = "source"
+  subscription_id     = local.source_subscription_id
+  storage_use_azuread = true
+
+  features {}
+}

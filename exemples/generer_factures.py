@@ -45,20 +45,24 @@ FICTIF = (
 
 
 def nir_key(first13: str) -> str:
+    """Clé de contrôle du NIR (Corse : 2A -> 19, 2B -> 18)."""
     n = int(first13.upper().replace("2A", "19").replace("2B", "18"))
     return f"{97 - n % 97:02d}"
 
 
 def nir(sex, yy, mm, dept, commune, ordre) -> str:
+    """NIR complet mis en forme « 1 85 03 69 123 456 10 », clé comprise."""
     first13 = f"{sex}{yy}{mm}{dept}{commune}{ordre}"
     return f"{sex} {yy} {mm} {dept} {commune} {ordre} {nir_key(first13)}"
 
 
 def euro(value: float) -> str:
+    """Montant au format français : 1 234,50 €."""
     return f"{value:,.2f} €".replace(",", " ").replace(".", ",")
 
 
 def rows_html(rows) -> str:
+    """Lignes HTML du tableau des actes (les deux dernières colonnes alignées à droite)."""
     return "".join(
         "<tr>" + "".join(f'<td class="{c}">{v}</td>' for c, v in zip(("", "", "", "num", "num"), r)) + "</tr>"
         for r in rows
@@ -66,6 +70,7 @@ def rows_html(rows) -> str:
 
 
 def header_left_html(d: dict) -> str:
+    """En-tête gauche : cabinet, praticien, adresse, contact et identifiants."""
     title = "" if d.get("logo") else f"<h1>{d['cabinet']}</h1>"
     return f"""{title}
   <b>{d['praticien']}</b><br/>{d['specialite']}<br/>
@@ -75,12 +80,14 @@ def header_left_html(d: dict) -> str:
 
 
 def header_right_html(d: dict) -> str:
+    """En-tête droit : mot FACTURE, numéro et date."""
     return f"""<div class="right"><h1>FACTURE</h1>
   N° {d['numero']}<br/>Date : {d['date']}<br/>
   <span class="small">{d.get('mention_droite', '')}</span></div>"""
 
 
 def invoice_html(d: dict) -> str:
+    """Corps de la facture : patient, actes, totaux, règlement et signature."""
     total = sum(r[4] for r in d["actes"])
     rows = [(r[0], r[1], r[2], r[3], euro(r[4])) for r in d["actes"]]
     amo = d.get("amo", 0.0)
@@ -131,6 +138,7 @@ def make_logo(text: str, subtitle: str) -> pymupdf.Pixmap:
 
 
 def build_pdf(d: dict, path: Path) -> bytes:
+    """Génère la facture PDF (logo éventuel, en-têtes, corps, mention « fictif ») et l'écrit dans path."""
     doc = pymupdf.open()
     page = doc.new_page(width=A4.width, height=A4.height)
     top = MARGIN
@@ -332,6 +340,7 @@ OD : -2,25 (-0,50 à 90°) ; OG : -2,00 (-0,75 à 85°) ; Écart pupillaire 62 m
 
 
 def main() -> None:
+    """Génère toutes les factures, plus la version scannée de la facture de kiné."""
     for name, data in FACTURES.items():
         pdf = build_pdf(data, OUT / f"{name}.pdf")
         print(f"{name}.pdf")

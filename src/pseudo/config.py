@@ -7,11 +7,13 @@ from dataclasses import dataclass
 
 
 def _env(name: str, default: str | None = None) -> str | None:
+    """Variable d'environnement, ou la valeur par défaut si elle est absente ou vide."""
     value = os.environ.get(name)
     return value if value not in (None, "") else default
 
 
 def _bool(name: str, default: bool) -> bool:
+    """Variable d'environnement booléenne (1, true, yes, oui, on)."""
     value = _env(name)
     if value is None:
         return default
@@ -19,11 +21,13 @@ def _bool(name: str, default: bool) -> bool:
 
 
 def _int(name: str, default: int) -> int:
+    """Variable d'environnement entière."""
     value = _env(name)
     return int(value) if value is not None else default
 
 
 def _float(name: str, default: float) -> float:
+    """Variable d'environnement décimale."""
     value = _env(name)
     return float(value) if value is not None else default
 
@@ -33,6 +37,7 @@ HANDWRITING_POLICIES = ("quarantaine", "traiter")
 
 
 def _output_mode() -> str:
+    """PSEUDO_OUTPUT_MODE validé : « substitution » (défaut) ou « jetons »."""
     value = (_env("PSEUDO_OUTPUT_MODE", "substitution") or "").strip().lower()
     if value not in OUTPUT_MODES:
         raise ValueError(f"PSEUDO_OUTPUT_MODE inconnu : {value!r} (attendu : {', '.join(OUTPUT_MODES)})")
@@ -40,6 +45,7 @@ def _output_mode() -> str:
 
 
 def _handwriting_policy() -> str:
+    """HANDWRITING_POLICY validé : « quarantaine » (défaut) ou « traiter »."""
     value = (_env("HANDWRITING_POLICY", "quarantaine") or "").strip().lower()
     if value not in HANDWRITING_POLICIES:
         raise ValueError(f"HANDWRITING_POLICY inconnu : {value!r} (attendu : {', '.join(HANDWRITING_POLICIES)})")
@@ -48,8 +54,11 @@ def _handwriting_policy() -> str:
 
 @dataclass(frozen=True)
 class Settings:
+    """Réglages de l'application, lus dans les variables d'environnement (app settings Azure)."""
     # Stockage
-    storage_account_url: str | None
+    storage_account_url: str | None  # compte « data » : work, sorties, quarantaine, prompts
+    # Compte où arrivent les documents (par défaut le compte « data ») et son container d'entrée.
+    source_storage_account_url: str | None
     incoming_container: str  # point d'entrée : les fichiers y sont déposés et y restent
     work_container: str  # fichiers intermédiaires (images préparées), purgés en fin de traitement
     output_container: str
@@ -128,9 +137,11 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
+        """Construit les réglages depuis l'environnement, avec les valeurs par défaut."""
         temperature = _env("OPENAI_TEMPERATURE")
         return cls(
             storage_account_url=_env("STORAGE_ACCOUNT_URL"),
+            source_storage_account_url=_env("SOURCE_STORAGE_ACCOUNT_URL", _env("STORAGE_ACCOUNT_URL")),
             incoming_container=_env("INCOMING_CONTAINER", "incoming"),
             work_container=_env("WORK_CONTAINER", "work"),
             output_container=_env("OUTPUT_CONTAINER", "pseudonymised"),

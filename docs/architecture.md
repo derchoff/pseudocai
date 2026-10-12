@@ -68,6 +68,12 @@ Cosmos DB et les services IA.
 | ② Préparation des images | images (`functions_images.py`) | `image-jobs` | Décode l'image, la contrôle, prépare une copie redressée pour l'OCR et l'emballe en PDF dans `work/<job>/`. Transmet ensuite le job à `pdf-jobs`. |
 | ③ Pseudonymisation | principale (`functions_main.py`) | `pdf-jobs` | Traite un PDF d'origine ou une image préparée : OCR, agents IA, jetons, classification et caviardage. La sortie est produite au **format d'origine**. |
 
+Le storage où arrivent les documents est par défaut le compte de données du service. Il peut
+aussi être un **storage existant**, dans un autre resource group ou abonnement : le déclencheur
+Event Grid y est alors posé, et les Functions n'y ont qu'un accès en lecture au container
+d'entrée (voir [déploiement](deploiement.md#installer-dans-un-resource-group-et-sur-un-storage-existants)).
+Les sorties restent toujours dans le compte de données.
+
 ## Déroulé d'un traitement
 
 ```mermaid

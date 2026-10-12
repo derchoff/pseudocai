@@ -30,11 +30,13 @@ class PreparedImage:
     preparation: dict = field(default_factory=dict)  # rapport de préparation (sans donnée personnelle)
 
     def paths(self) -> list[str]:
+        """Chemins des fichiers préparés présents dans work/ (à supprimer en fin de traitement)."""
         return [p for p in (self.render_pdf, self.transforms, self.ocr_pdf) if p]
 
 
 @dataclass
 class Job:
+    """Message échangé entre les étapes : document à traiter, format, origine et fichiers préparés."""
     job_id: str  # identifiant de corrélation, attribué par le routeur
     document_id: str  # empreinte stable du document d'origine (traces, retraitements)
     source_container: str
@@ -46,6 +48,7 @@ class Job:
 
     @classmethod
     def new(cls, source_url: str, container: str, name: str, source_format: str, origin: str) -> "Job":
+        """Nouveau job pour un fichier déposé : identifiant unique et empreinte stable du document."""
         return cls(
             job_id=str(uuid.uuid4()),
             document_id=document_id(source_url),
@@ -57,16 +60,19 @@ class Job:
         )
 
     def to_json(self) -> str:
+        """Corps du message Service Bus."""
         return json.dumps(asdict(self), ensure_ascii=False)
 
     @classmethod
     def from_json(cls, body: bytes | str) -> "Job":
+        """Relit un job depuis le corps d'un message Service Bus."""
         data = json.loads(body)
         prepared = data.pop("prepared", None)
         return cls(**data, prepared=PreparedImage(**prepared) if prepared else None)
 
     @property
     def work_prefix(self) -> str:
+        """Dossier du job dans le container work/."""
         return f"{self.job_id}/"
 
 

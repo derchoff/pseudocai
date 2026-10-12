@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from urllib.parse import urlparse
 
 from azure.core.exceptions import ResourceNotFoundError
 
@@ -16,22 +17,27 @@ class FakeBlobService:
     """Stockage Blob en mémoire : {(container, nom): {"data": bytes, "metadata": dict}}."""
 
     def __init__(self):
+        """Blobs en mémoire : (container, nom) -> contenu et métadonnées."""
         self.blobs: dict[tuple[str, str], dict] = {}
 
     def put(self, container: str, name: str, data: bytes) -> None:
+        """Dépose un fichier."""
         self.blobs[(container, name)] = {"data": data, "metadata": {}}
 
     def get_blob_client(self, container, name):
+        """Client d'un blob : exists, propriétés, téléchargement, suppression."""
         blobs = self.blobs
         key = (container, name)
 
         def download_blob(offset=None, length=None):
+            """Contenu du blob (ou une partie avec offset et length)."""
             data = blobs[key]["data"]
             if offset is not None:
                 data = data[offset: offset + length if length else None]
             return SimpleNamespace(readall=lambda: data)
 
         def delete_blob():
+            """Supprime le blob ; lève ResourceNotFoundError s'il est absent."""
             if key not in blobs:
                 raise ResourceNotFoundError("absent")
             del blobs[key]
@@ -44,7 +50,9 @@ class FakeBlobService:
         )
 
     def get_container_client(self, container):
+        """Client d'un container : upload_blob et get_blob_client."""
         def upload_blob(name, data, overwrite=False, content_settings=None, metadata=None):
+            """Écrit (ou remplace) un blob avec ses métadonnées."""
             self.blobs[(container, name)] = {"data": data, "metadata": metadata or {}}
 
         return SimpleNamespace(
@@ -53,39 +61,51 @@ class FakeBlobService:
         )
 
     def names(self, container):
+        """Noms des blobs du container, triés."""
         return sorted(n for c, n in self.blobs if c == container)
 
     def data(self, container, name) -> bytes:
+        """Contenu d'un blob."""
         return self.blobs[(container, name)]["data"]
 
 
 class MemoryStore:
+    """Stockage des correspondances, traces et occurrences en mémoire."""
+
     def __init__(self):
+        """Listes vides de traces et de correspondances."""
         self.traces = []
         self.records = []
 
     def save(self, records):
+        """Ajoute les correspondances."""
         self.records += records
 
     def save_trace(self, trace):
+        """Ajoute la trace."""
         self.traces.append(trace)
 
     def last_trace(self, document_id):
+        """Dernière trace du document, ou None."""
         mine = [t for t in self.traces if t["documentId"] == document_id]
         return mine[-1] if mine else None
 
     def save_occurrences(self, document_id, items):
+        """Remplace les occurrences du document."""
         self.occurrences = [o for o in getattr(self, "occurrences", []) if o["documentId"] != document_id] + items
 
 
-def event(name: str, container: str = "incoming") -> str:
-    return json.dumps({"data": {"url": f"https://st.blob.core.windows.net/{container}/{name}"}})
+def event(name: str, container: str = "incoming", host: str = "st.blob.core.windows.net") -> str:
+    """Événement Event Grid BlobCreated (JSON) pour le fichier name du compte host."""
+    return json.dumps({"data": {"url": f"https://{host}/{container}/{name}"}})
 
 
 def run_chain(runtime: Runtime, name: str, prepare_image=None) -> tuple[str, list[str]]:
     """Enchaîne les étapes comme Service Bus le ferait : routeur -> (préparation image) -> pseudonymisation.
     Retourne (statut final, messages transmis entre étapes)."""
-    route = route_event(event(name, runtime.settings.incoming_container), runtime)
+    source_url = runtime.settings.source_storage_account_url
+    host = urlparse(source_url).hostname if source_url else "st.blob.core.windows.net"
+    route = route_event(event(name, runtime.settings.incoming_container, host), runtime)
     messages = []
     if route.queue is None:
         return route.status, messages

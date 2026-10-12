@@ -63,6 +63,7 @@ def classification_schema(doc_types: tuple[str, ...]) -> dict:
 
 
 class LlmError(RuntimeError):
+    """Réponse inexploitable du modèle (refus, réponse tronquée)."""
     pass
 
 
@@ -78,6 +79,7 @@ class AzureOpenAIJsonAgent:
         temperature: float | None = None,
         max_completion_tokens: int = 16000,
     ):
+        """client : client Azure OpenAI ; deployment : nom du déploiement du modèle."""
         self._client = client
         self._deployment = deployment
         self._reasoning_effort = reasoning_effort
@@ -85,6 +87,7 @@ class AzureOpenAIJsonAgent:
         self._max_tokens = max_completion_tokens
 
     def run(self, system_prompt: str, user_content: str, schema: dict, schema_name: str = "entities") -> dict:
+        """Appelle le modèle avec un schéma JSON strict (Structured Outputs) et renvoie la réponse décodée."""
         kwargs: dict = {
             "model": self._deployment,
             "messages": [
@@ -111,6 +114,7 @@ class AzureOpenAIJsonAgent:
 
 
 def format_lines(lines: Iterable[tuple[str, str]]) -> str:
+    """Met les lignes au format attendu par les prompts : `<document>` puis `id: texte` par ligne."""
     body = "\n".join(f"{line_id}: {text}" for line_id, text in lines)
     return f"<document>\n{body}\n</document>"
 
@@ -146,6 +150,7 @@ class EntityAgent:
         overlap_lines: int,
         min_confidence: float,
     ):
+        """source : nom de l'agent (llm, verifier) ; les entités sous min_confidence sont ignorées."""
         self._llm = llm
         self._prompt_provider = prompt_provider
         self._source = source
@@ -155,6 +160,10 @@ class EntityAgent:
         self.last_prompt_sha256: str | None = None
 
     def run(self, lines: list[tuple[str, str]]) -> list[Entity]:
+        """Fait analyser les lignes par blocs et renvoie les entités valides.
+
+        Les types hors référentiel et les identifiants de ligne inconnus sont écartés.
+        """
         if not lines:
             return []
         prompt = self._prompt_provider()
@@ -194,26 +203,36 @@ class EntityAgent:
 
 
 class DetectionAgent:
+    """Agent de détection : repère les données personnelles dans le texte d'origine."""
+
     def __init__(self, agent: EntityAgent):
+        """Enveloppe un EntityAgent configuré avec le prompt de détection."""
         self._agent = agent
 
     @property
     def prompt_sha256(self) -> str | None:
+        """Empreinte du dernier prompt utilisé (tracée dans le rapport)."""
         return self._agent.last_prompt_sha256
 
     def detect(self, lines: list[Line]) -> list[Entity]:
+        """Entités trouvées dans les lignes non vides du document."""
         return self._agent.run([(line.id, line.text) for line in lines if line.text.strip()])
 
 
 class VerificationAgent:
+    """Agent de vérification : cherche les données restées en clair dans le texte pseudonymisé."""
+
     def __init__(self, agent: EntityAgent):
+        """Enveloppe un EntityAgent configuré avec le prompt de vérification."""
         self._agent = agent
 
     @property
     def prompt_sha256(self) -> str | None:
+        """Empreinte du dernier prompt utilisé (tracée dans le rapport)."""
         return self._agent.last_prompt_sha256
 
     def verify(self, pseudonymised_lines: list[tuple[str, str]]) -> list[Entity]:
+        """Résidus trouvés dans les lignes pseudonymisées (id, texte) non vides."""
         return self._agent.run([item for item in pseudonymised_lines if item[1].strip()])
 
 
@@ -221,12 +240,17 @@ class ClassificationAgent:
     """Classe le document à partir de son texte DÉJÀ PSEUDONYMISÉ (minimisation des données)."""
 
     def __init__(self, llm: AzureOpenAIJsonAgent, prompt_provider: Callable[[], RenderedPrompt], *, max_chars: int):
+        """max_chars : nombre de caractères du texte envoyés au modèle."""
         self._llm = llm
         self._prompt_provider = prompt_provider
         self._max_chars = max_chars
         self.prompt_sha256: str | None = None
 
     def classify(self, pseudonymised_text: str) -> tuple[list[dict], DocTypeCatalog, str]:
+        """Demande au modèle les types probables du document pseudonymisé.
+
+        Renvoie (types bruts avec confiances, référentiel utilisé, empreinte du prompt).
+        """
         prompt = self._prompt_provider()
         self.prompt_sha256 = prompt.sha256
         excerpt = pseudonymised_text[: self._max_chars]

@@ -93,12 +93,14 @@ def estimate_skew(gray: np.ndarray) -> float:
 
 
 def _order_corners(points: np.ndarray) -> np.ndarray:
+    """Range 4 coins dans l'ordre haut-gauche, haut-droit, bas-droit, bas-gauche."""
     s = points.sum(axis=1)
     d = np.diff(points, axis=1).ravel()
     return np.array([points[np.argmin(s)], points[np.argmin(d)], points[np.argmax(s)], points[np.argmax(d)]])
 
 
 def _touches_border(corners: np.ndarray, shape, tolerance: float = 0.01) -> bool:
+    """Vrai si tous les coins sont au bord de l'image (le document remplit déjà le cadre)."""
     h, w = shape
     margin_x, margin_y = w * tolerance, h * tolerance
     return all(
@@ -107,6 +109,7 @@ def _touches_border(corners: np.ndarray, shape, tolerance: float = 0.01) -> bool
 
 
 def _perspective_matrix(corners: np.ndarray):
+    """Matrice qui redresse le quadrilatère du document en rectangle, et taille de ce rectangle."""
     tl, tr, br, bl = corners
     width = int(round(max(np.linalg.norm(br - bl), np.linalg.norm(tr - tl))))
     height = int(round(max(np.linalg.norm(tr - br), np.linalg.norm(tl - bl))))

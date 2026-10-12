@@ -25,6 +25,7 @@ _storage: SimpleStorageContext | None = None
 
 
 def get_storage() -> SimpleStorageContext:
+    """Contexte de stockage partagé, créé au premier appel (sûr entre threads)."""
     global _storage
     with _lock:
         if _storage is None:
@@ -36,6 +37,7 @@ def get_storage() -> SimpleStorageContext:
 @bp.service_bus_queue_trigger(arg_name="msg", queue_name="%IMAGE_QUEUE_NAME%", connection="ServiceBusConnection")
 @bp.service_bus_queue_output(arg_name="pdfjobs", queue_name="%PDF_QUEUE_NAME%", connection="ServiceBusConnection")
 def prepare_image(msg: func.ServiceBusMessage, pdfjobs: func.Out[str]) -> None:
+    """Function Service Bus : prépare une image puis envoie le job dans la file pdf-jobs."""
     logging.info("Image %s (tentative %s)", msg.message_id, msg.delivery_count)
     job = handle_image_job(msg.get_body(), get_storage())
     if job is not None:

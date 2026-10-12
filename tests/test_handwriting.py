@@ -43,6 +43,7 @@ class HandwrittenOcr(TruthOcr):
     """OCR simulé : les deux « DUPONT » du document sont signalés comme manuscrit."""
 
     def ocr(self, pdf_bytes, doc, page_indexes):
+        """OCR de la page, puis marque « DUPONT » comme manuscrit."""
         pages = super().ocr(pdf_bytes, doc, page_indexes)
         for page in pages:
             for line in page.lines:
@@ -52,16 +53,21 @@ class HandwrittenOcr(TruthOcr):
 
 
 class CountingDetector(FakeDetector):
+    """Détecteur simulé qui compte ses appels."""
+
     def __init__(self, *args, **kwargs):
+        """Mêmes paramètres que FakeDetector."""
         super().__init__(*args, **kwargs)
         self.calls = 0
 
     def detect(self, lines):
+        """Compte l'appel puis détecte comme FakeDetector."""
         self.calls += 1
         return super().detect(lines)
 
 
 def run_scanned(monkeypatch, policy):
+    """Lance le pipeline sur le PDF scanné de test avec la politique de manuscrit donnée."""
     monkeypatch.setenv("HANDWRITING_POLICY", policy)
     pdf, truth_pdf = make_scanned_pdf()
     detector = CountingDetector({"DUPONT": "NOM", "Jean": "PRENOM"})

@@ -24,6 +24,7 @@ IBAN_SECTION = """
 
 
 def write_prompts(tmp_path: Path, champs: str) -> PromptRepository:
+    """Copie les prompts d'agents dans tmp_path avec le référentiel des champs donné."""
     for name in ("agent-detection.md", "agent-verification.md"):
         (tmp_path / name).write_text((PROMPTS / name).read_text(encoding="utf-8"), encoding="utf-8")
     (tmp_path / "champs-a-pseudonymiser.md").write_text(champs, encoding="utf-8")
@@ -31,6 +32,7 @@ def write_prompts(tmp_path: Path, champs: str) -> PromptRepository:
 
 
 def current_champs() -> str:
+    """Contenu actuel de prompts/champs-a-pseudonymiser.md."""
     return (PROMPTS / "champs-a-pseudonymiser.md").read_text(encoding="utf-8")
 
 
@@ -91,11 +93,15 @@ def test_commented_example_does_not_declare_a_field(tmp_path):
 
 
 class RecordingLlm:
+    """Modèle simulé qui note les schémas reçus et renvoie des entités fixées."""
+
     def __init__(self, entities):
+        """entities : entités renvoyées à chaque appel."""
         self.entities = entities
         self.schemas = []
 
     def run(self, system_prompt, user_content, schema, schema_name="entities"):
+        """Note le schéma et renvoie les entités fixées."""
         self.schemas.append(schema)
         return {"entities": self.entities}
 
@@ -127,13 +133,18 @@ def test_new_field_uses_its_normalisation_for_tokens(tmp_path):
     page.insert_text((72, 100), "Rappel IBAN FR7630006000-0112", fontsize=12)
 
     class Detector:
+        """Détecteur simulé : une écriture différente du même IBAN sur chaque ligne."""
         prompt_sha256 = "x"
 
         def detect(self, lines):
+            """Les deux IBAN, sur les deux premières lignes."""
             return [Entity(lines[0].id, "FR76 3000 6000 0112", "IBAN"), Entity(lines[1].id, "FR7630006000-0112", "IBAN")]
 
     class NoOcr:
+        """OCR simulé qui ne lit rien."""
+
         def ocr(self, pdf_bytes, doc, page_indexes):
+            """Aucune page lue."""
             return []
 
     pseudonymizer = Pseudonymizer(b"k" * 32)

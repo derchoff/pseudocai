@@ -11,10 +11,12 @@ from pseudo.spans import (
 
 
 def make_line(text: str, line_id: str = "p1-l1") -> Line:
+    """Ligne de test construite à partir d'un texte (un mot par espace)."""
     return Line.build(line_id, 0, [Word(t, (0, 0, 1, 1)) for t in text.split(" ")])
 
 
 def make_doc(*texts: str) -> DocumentContent:
+    """Document d'une page avec une ligne par texte."""
     lines = [make_line(t, f"p1-l{i + 1}") for i, t in enumerate(texts)]
     return DocumentContent(pages=[PageContent(index=0, source="native", lines=lines)])
 

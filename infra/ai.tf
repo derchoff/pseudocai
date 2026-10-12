@@ -8,7 +8,7 @@ locals {
 resource "azurerm_cognitive_account" "openai" {
   name                          = "oai-${local.base}-${random_string.suffix.result}"
   location                      = var.openai_location
-  resource_group_name           = azurerm_resource_group.main.name
+  resource_group_name           = local.resource_group_name
   kind                          = "OpenAI"
   sku_name                      = "S0"
   custom_subdomain_name         = "oai-${local.base}-${random_string.suffix.result}"
@@ -44,8 +44,8 @@ resource "azurerm_cognitive_deployment" "llm" {
 
 resource "azurerm_cognitive_account" "docintel" {
   name                          = "di-${local.base}-${random_string.suffix.result}"
-  location                      = azurerm_resource_group.main.location
-  resource_group_name           = azurerm_resource_group.main.name
+  location                      = local.location
+  resource_group_name           = local.resource_group_name
   kind                          = "FormRecognizer"
   sku_name                      = "S0"
   custom_subdomain_name         = "di-${local.base}-${random_string.suffix.result}"
@@ -65,8 +65,8 @@ resource "azurerm_cognitive_account" "docintel" {
 resource "azurerm_cognitive_account" "language" {
   count                         = var.enable_language_pii ? 1 : 0
   name                          = "lang-${local.base}-${random_string.suffix.result}"
-  location                      = azurerm_resource_group.main.location
-  resource_group_name           = azurerm_resource_group.main.name
+  location                      = local.location
+  resource_group_name           = local.resource_group_name
   kind                          = "TextAnalytics"
   sku_name                      = "S"
   custom_subdomain_name         = "lang-${local.base}-${random_string.suffix.result}"

@@ -35,6 +35,8 @@ $outputs = terraform "-chdir=infra" output "-json" | ConvertFrom-Json
 $functionApp = $outputs.function_app_name.value
 $imageApp = $outputs.image_function_app_name.value
 $storage = $outputs.data_storage_account_name.value
+$sourceStorage = $outputs.source_storage_account_name.value
+$sourceContainer = $outputs.source_container_name.value
 
 & "$PSScriptRoot/publish-prompts.ps1" -StorageAccount $storage
 
@@ -66,4 +68,4 @@ if (-not $SkipCode) {
         }
     }
 }
-Write-Host "Déploiement terminé. Déposer un document dans le container 'incoming' de $storage pour tester."
+Write-Host "Déploiement terminé. Déposer un document dans le container '$sourceContainer' de $sourceStorage pour tester."

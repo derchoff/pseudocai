@@ -30,23 +30,29 @@ CATALOG = PromptRepository(LocalPromptSource(PROMPTS)).doctypes()
 
 @pytest.fixture
 def settings(monkeypatch):
+    """Réglages par défaut de la classification."""
     for key in ("CLASSIFICATION_ENABLED", "CLASSIFICATION_MIN_CONFIDENCE", "UNCLASSIFIED_FOLDER", "OCR_NATIVE_PAGES"):
         monkeypatch.delenv(key, raising=False)
     return Settings.from_env()
 
 
 def scores(*pairs):
+    """Réponse brute d'agent : une entrée par couple (type, confiance)."""
     return [{"type": t, "confidence": c, "indices": [f"indice {t.lower()}"]} for t, c in pairs]
 
 
 class FakeClassifier:
+    """Agent de classification simulé : renvoie une réponse fixée ou lève une erreur."""
+
     def __init__(self, raw=None, error: Exception | None = None):
+        """raw : réponse à renvoyer ; error : exception à lever à la place."""
         self.raw = raw or []
         self.error = error
         self.prompt_sha256 = "sha-classif"
         self.texts: list[str] = []
 
     def classify(self, text):
+        """Note le texte reçu puis renvoie la réponse fixée (ou lève l'erreur)."""
         self.texts.append(text)
         if self.error:
             raise self.error
@@ -93,6 +99,7 @@ def test_classification_prompt_is_rendered_without_placeholders():
 
 
 def decide_(raw, **kw):
+    """decide() avec les seuils par défaut (0,6 / 0,3), modifiables par mot-clé."""
     params = dict(min_confidence=0.6, secondary_min_confidence=0.3, unclassified_folder="non-classe")
     params.update(kw)
     return decide(raw, CATALOG, **params)
@@ -139,11 +146,15 @@ def test_indices_are_truncated_and_metadata_is_ascii():
 
 
 class RecordingLlm:
+    """Modèle simulé qui note chaque appel et renvoie une réponse fixée."""
+
     def __init__(self, answer):
+        """answer : réponse JSON renvoyée à chaque appel."""
         self.answer = answer
         self.calls = []
 
     def run(self, system_prompt, user_content, schema, schema_name="entities"):
+        """Note les arguments de l'appel et renvoie la réponse fixée."""
         self.calls.append((system_prompt, user_content, schema, schema_name))
         return self.answer
 
@@ -210,6 +221,7 @@ def test_disabled_classification_writes_without_type_folder(settings, monkeypatc
 
 
 def make_runtime(settings, svc, blobs=None, store=None):
+    """Runtime de test avec la facture d'exemple déposée dans incoming/lot1/."""
     blobs = blobs or FakeBlobService()
     blobs.put("incoming", "lot1/facture.pdf", make_text_pdf())
     return Runtime(settings=settings, services=svc, mapping_store=store or MemoryStore(), blob_service=blobs)

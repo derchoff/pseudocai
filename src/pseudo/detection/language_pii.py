@@ -23,13 +23,17 @@ def parse_category_map(spec: str) -> dict[str, str]:
 
 
 class LanguagePiiDetector:
+    """Filet de sécurité : détection de données personnelles par Azure AI Language (PII)."""
+
     def __init__(self, client, category_map: dict[str, str], min_confidence: float, language: str = "fr"):
+        """category_map : catégorie Azure -> type interne ; les détections sous min_confidence sont ignorées."""
         self._client = client
         self._map = category_map
         self._min_conf = min_confidence
         self._language = language
 
     def detect(self, lines: list[Line]) -> list[Span]:
+        """Envoie les lignes par blocs à Azure AI Language et renvoie les zones détectées, ligne par ligne."""
         chunks = self._chunk(lines)
         spans: list[Span] = []
         for i in range(0, len(chunks), MAX_DOCS_PER_CALL):
@@ -67,6 +71,7 @@ class LanguagePiiDetector:
 
 
 def _to_line_spans(layout: list[tuple[int, Line]], start: int, end: int, etype: str) -> list[Span]:
+    """Découpe une détection [start, end[ d'un bloc de texte en zones sur chacune des lignes qu'elle couvre."""
     spans = []
     for offset, line in layout:
         a = max(start, offset)

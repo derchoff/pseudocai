@@ -10,7 +10,7 @@ import logging
 
 from .classification import STATUT_NON_APPLICABLE, unclassified
 from .jobs import ORIGIN_IMAGE, Job
-from .outputs import STAGE_PSEUDONYMISATION, delete_work_files, previous_trace, publish, quarantine
+from .outputs import STAGE_PSEUDONYMISATION, delete_work_files, previous_trace, publish, quarantine, source_blob
 from .pipeline import PipelineInput, run_pipeline
 from .runtime import Runtime
 
@@ -18,6 +18,10 @@ log = logging.getLogger(__name__)
 
 
 def handle_pdf_job(body: bytes | str, runtime: Runtime) -> str:
+    """Traite un job pdf-jobs de bout en bout : pipeline, puis publication ou quarantaine.
+
+    Idempotent : un message relivré pour un job déjà terminé est ignoré. Renvoie le statut final.
+    """
     settings = runtime.settings
     job = Job.from_json(body)
     previous = previous_trace(runtime, job)
@@ -27,7 +31,7 @@ def handle_pdf_job(body: bytes | str, runtime: Runtime) -> str:
         delete_work_files(runtime, job)
         return "already_processed"
 
-    source = runtime.blob_service.get_blob_client(job.source_container, job.source_name)
+    source = source_blob(runtime, job.source_container, job.source_name)
     if not source.exists():
         log.warning("Document introuvable dans incoming/ doc=%s", job.document_id)
         delete_work_files(runtime, job)

@@ -56,4 +56,5 @@ def format_from_name(name: str) -> str | None:
 
 
 def is_image(fmt: str | None) -> bool:
+    """Vrai si le format est un format d'image pris en charge."""
     return fmt in IMAGE_FORMATS

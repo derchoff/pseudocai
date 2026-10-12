@@ -29,12 +29,14 @@ class ImageTooLargeError(ValueError):
 
 @dataclass
 class DecodedImage:
+    """Image décodée : format, pages en RGB (orientation EXIF appliquée), orientation EXIF d'origine."""
     format: str
     frames: list  # list[PIL.Image.Image] en RGB, orientation EXIF appliquée
     exif_orientation: int | None
 
 
 def _pil():
+    """Module PIL.Image, avec le support HEIF/HEIC activé si pillow-heif est installé."""
     from PIL import Image
 
     try:
@@ -47,6 +49,10 @@ def _pil():
 
 
 def decode(data: bytes, fmt: str, max_pixels: int) -> DecodedImage:
+    """Décode une image en n'acceptant que le format annoncé par son extension.
+
+    Lève ImageDecodeError si le contenu ne correspond pas, ImageTooLargeError au-delà de max_pixels.
+    """
     Image = _pil()
     from PIL import ImageOps, ImageSequence, UnidentifiedImageError
 
@@ -91,6 +97,7 @@ def encode(frames: list, fmt: str, quality: int = 90) -> bytes:
 
 
 def _to_rgb(img):
+    """Convertit en RGB ; la transparence est aplatie sur fond blanc."""
     if img.mode == "RGB":
         return img
     Image = _pil()

@@ -5,6 +5,18 @@ environment     = "dev"
 location        = "francecentral"
 openai_location = "swedencentral"
 
+# Resource group : null = rg-<project>-<environment>. create_resource_group = false s'il existe déjà.
+resource_group_name   = null
+create_resource_group = true
+
+# Storage d'origine (où arrivent les documents). null = container d'entrée du compte « data » créé ici.
+# Sinon, compte EXISTANT (autre resource group ou abonnement possible) :
+# source_storage_account_id = "/subscriptions/<id>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/<nom>"
+source_storage_account_id = null
+source_container_name     = "incoming"
+create_source_container   = false # compte existant : créer le container s'il n'existe pas
+source_system_topic_name  = null  # compte existant ayant déjà un topic Event Grid : son nom
+
 # Modèle utilisé par les agents de détection et de vérification
 openai_model_name       = "gpt-5-mini"
 openai_model_version    = "2025-08-07"

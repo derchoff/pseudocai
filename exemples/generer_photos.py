@@ -27,11 +27,13 @@ TABLE_RGB = (52, 44, 38)
 
 
 def page_image(pdf_name: str, dpi: int = 150) -> Image.Image:
+    """Première page d'une facture PDF d'exemples/, en image RGB."""
     page = pymupdf.open(OUT / pdf_name)[0]
     return Image.open(io.BytesIO(page.get_pixmap(dpi=dpi).tobytes("png"))).convert("RGB")
 
 
 def perspective(img: Image.Image, canvas: tuple[int, int], quad) -> Image.Image:
+    """Pose l'image sur un fond de table, vue en perspective (quad = coins d'arrivée), avec un léger bruit."""
     w, h = img.size
     src = np.float32([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]])
     matrix = cv2.getPerspectiveTransform(src, np.float32(quad))
@@ -41,6 +43,7 @@ def perspective(img: Image.Image, canvas: tuple[int, int], quad) -> Image.Image:
 
 
 def main() -> None:
+    """Génère les images de test : photo de biais avec EXIF, HEIC, scan penché, TIFF multipage, photo floue."""
     # 1. Photo en perspective, stockée couchée avec orientation EXIF et métadonnées d'appareil.
     dentiste = perspective(
         page_image("facture-dentiste.pdf"), (1500, 2000),

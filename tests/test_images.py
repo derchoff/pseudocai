@@ -33,6 +33,7 @@ MAKE, MODEL = 0x010F, 0x0110
 
 @pytest.fixture
 def settings(monkeypatch):
+    """Réglages avec le traitement des images activé."""
     for key in ("IMAGE_PROCESSING_ENABLED", "IMAGE_ENHANCE_FOR_OCR", "CLASSIFICATION_ENABLED", "OCR_NATIVE_PAGES"):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("IMAGE_PROCESSING_ENABLED", "true")
@@ -40,12 +41,14 @@ def settings(monkeypatch):
 
 
 def document_image() -> Image.Image:
+    """Facture de test rendue en image (le document « à plat »)."""
     page = pymupdf.open(stream=make_text_pdf(), filetype="pdf")[0]
     pix = page.get_pixmap(dpi=DOC_DPI)
     return Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
 
 
 def doc_to_photo_matrix(doc: Image.Image) -> np.ndarray:
+    """Matrice qui place le document à plat aux coins PHOTO_QUAD de la photo."""
     w, h = doc.size
     src = np.float32([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]])
     return cv2.getPerspectiveTransform(src, np.float32(PHOTO_QUAD)).astype(np.float64)
@@ -79,11 +82,13 @@ class PhotoOcr:
     dans la copie OCR (photo P puis redressement M), en points de ocr.pdf."""
 
     def __init__(self, p: np.ndarray, geometry):
+        """p : matrice document -> photo ; geometry : géométrie produite par la préparation."""
         self.p = p.tolist()
         self.geometry = geometry
         self.calls = 0
 
     def ocr(self, pdf_bytes, doc, page_indexes):
+        """Vrais mots du document, positionnés dans la copie redressée (points de ocr.pdf)."""
         self.calls += 1
         g = self.geometry[0]
         to_ocr = multiply(g.to_ocr, self.p)
@@ -129,6 +134,7 @@ def test_format_comes_from_extension_only(name, fmt):
 
 
 def storage(settings, blobs=None, store=None, svc=None):
+    """Runtime de test (stockage en mémoire)."""
     return Runtime(settings=settings, services=svc, mapping_store=store or MemoryStore(), blob_service=blobs or FakeBlobService())
 
 
@@ -281,6 +287,7 @@ def test_prepare_keeps_original_framing_for_rendering(settings):
 
 
 def image_runtime(settings, photo: bytes, name="lot1/photo.jpg"):
+    """Runtime de test avec la photo déposée dans incoming/."""
     blobs = FakeBlobService()
     blobs.put("incoming", name, photo)
     svc = services(detector=FakeDetector({"DUPONT": "NOM", "Jean": "PRENOM"}))
@@ -293,6 +300,7 @@ def test_photo_is_pseudonymised_in_its_original_format_and_framing(settings):
     ocr_holder = {}
 
     def prepare(job_json, ctx):
+        """Prépare l'image puis branche l'OCR simulé sur la géométrie obtenue."""
         job = handle_image_job(job_json, ctx)
         geometry = load_geometry(ctx.blob_service.data("work", job.prepared.transforms))
         ocr_holder["ocr"] = runtime.services.ocr = PhotoOcr(p, geometry)

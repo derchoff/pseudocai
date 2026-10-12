@@ -32,11 +32,13 @@ class TransformedOcr:
     """OCR de la copie redressée ; positions exprimées dans les pages de render.pdf (points)."""
 
     def __init__(self, inner: OcrEngine, ocr_pdf: bytes, pages: list[PageGeometry]):
+        """inner : moteur OCR réel ; ocr_pdf : copie redressée ; pages : géométrie de chaque page."""
         self._inner = inner
         self._ocr_pdf = ocr_pdf
         self._pages = pages
 
     def ocr(self, pdf_bytes: bytes, doc: pymupdf.Document, page_indexes: list[int]) -> list[PageContent]:
+        """OCR de la copie redressée, positions ramenées sur l'image d'origine (quadrilatères)."""
         ocr_doc = pymupdf.open(stream=self._ocr_pdf, filetype="pdf")
         results = self._inner.ocr(self._ocr_pdf, ocr_doc, page_indexes)
         for page in results:
@@ -54,12 +56,14 @@ class ImageRenderer:
     """Masque les zones sur l'image d'origine et l'encode dans son format d'origine, sans EXIF."""
 
     def __init__(self, original: bytes, fmt: str, pages: list[PageGeometry], settings: Settings):
+        """original : fichier image d'origine ; fmt : son format ; pages : géométrie de chaque page."""
         self._original = original
         self._fmt = fmt
         self._pages = pages
         self._settings = settings
 
     def __call__(self, pdf_bytes: bytes, content: DocumentContent, spans: list[Span], dpi: int) -> bytes:
+        """Remplace les zones sur l'image d'origine et renvoie l'image encodée dans son format."""
         frames = decode(self._original, self._fmt, self._settings.image_max_pixels).frames
         by_page: dict[int, list[tuple[Line, Span]]] = defaultdict(list)
         for s in spans:
@@ -81,6 +85,7 @@ def load_image_input(job: Job, original: bytes, work_client, ocr: OcrEngine | No
         raise ValueError("Job image sans fichiers préparés")
 
     def read(path: str) -> bytes:
+        """Contenu d'un fichier préparé du container work/."""
         return work_client.get_blob_client(path).download_blob().readall()
 
     pages = load_geometry(read(prepared.transforms))

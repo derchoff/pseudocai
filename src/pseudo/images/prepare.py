@@ -19,7 +19,7 @@ from ..config import Settings
 from ..geometry import IDENTITY, PageGeometry, dump_geometry
 from ..image_codec import ImageDecodeError, ImageTooLargeError, decode
 from ..jobs import Job, PreparedImage
-from ..outputs import STAGE_IMAGE, StorageContext, previous_trace, quarantine
+from ..outputs import STAGE_IMAGE, StorageContext, previous_trace, quarantine, source_blob
 from .preprocess import prepare_ocr_copy
 from .quality import check_quality
 
@@ -30,6 +30,7 @@ RENDER_JPEG_QUALITY = 95
 
 @dataclass
 class PreparedArtifacts:
+    """Fichiers produits par la préparation d'une image, ou motifs de quarantaine."""
     render_pdf: bytes
     transforms: bytes
     ocr_pdf: bytes | None
@@ -85,7 +86,7 @@ def handle_image_job(body: bytes | str, ctx: StorageContext) -> Job | None:
     """Prépare l'image du job et renvoie le job à transmettre à « pdf-jobs » (None si quarantaine)."""
     settings = ctx.settings
     job = Job.from_json(body)
-    blob = ctx.blob_service.get_blob_client(job.source_container, job.source_name)
+    blob = source_blob(ctx, job.source_container, job.source_name)
     if not blob.exists():
         log.warning("Image introuvable dans incoming/ doc=%s", job.document_id)
         return None

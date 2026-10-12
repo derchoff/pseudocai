@@ -37,26 +37,41 @@ STAGE_PSEUDONYMISATION = "pseudonymisation"
 
 
 class StorageContext(Protocol):
+    """Ce dont la publication a besoin : réglages, client Blob Storage et stockage des traces.
+
+    source_blob_service : client du compte d'origine, s'il diffère du compte « data » (sinon None).
+    """
     settings: Settings
     blob_service: object
     mapping_store: MappingStore
+    source_blob_service: object | None
 
 
 @dataclass
 class SimpleStorageContext:
+    """Implémentation simple de StorageContext (routeur, app images)."""
     settings: Settings
     blob_service: object
     mapping_store: MappingStore
+    source_blob_service: object | None = None
+
+
+def source_blob(ctx: StorageContext, container: str, name: str):
+    """Client du document déposé, dans le compte d'origine (le compte « data » par défaut)."""
+    service = getattr(ctx, "source_blob_service", None) or ctx.blob_service
+    return service.get_blob_client(container, name)
 
 
 @dataclass
 class OutputFile:
+    """Fichier à écrire dans un container de sortie."""
     name: str  # chemin relatif au container
     data: bytes
     content_type: str
 
 
 def output_names(source_name: str, folder: str = "") -> dict[str, str]:
+    """Noms des sorties d'un document : document, texte, rapport et motif de quarantaine."""
     prefix = f"{folder}/" if folder else ""
     stem, _ = posixpath.splitext(source_name)
     return {
@@ -68,6 +83,7 @@ def output_names(source_name: str, folder: str = "") -> dict[str, str]:
 
 
 def previous_trace(ctx: StorageContext, job: Job) -> dict | None:
+    """Dernière trace du document, ou None si elle est absente ou illisible."""
     try:
         return ctx.mapping_store.last_trace(job.document_id)
     except Exception:  # noqa: BLE001 - l'absence d'historique ne doit pas bloquer le traitement
@@ -171,6 +187,7 @@ def delete_work_files(ctx: StorageContext, job: Job) -> None:
 
 
 def _write(ctx: StorageContext, container: str, files: list[OutputFile], classification: Classification) -> list[str]:
+    """Écrit les fichiers dans le container, avec la classification en métadonnées. Renvoie leurs chemins."""
     from azure.storage.blob import ContentSettings
 
     client = ctx.blob_service.get_container_client(container)
@@ -196,6 +213,10 @@ def _finish(
     previous: dict | None,
     stage: str,
 ) -> None:
+    """Termine un traitement : supprime les anciennes sorties, écrit la trace et nettoie work/.
+
+    Supprime aussi la source si DELETE_SOURCE_AFTER_SUCCESS est activé.
+    """
     _remove_previous_outputs(ctx, previous, outputs)
     ctx.mapping_store.save_trace(
         {
@@ -216,10 +237,14 @@ def _finish(
     )
     delete_work_files(ctx, job)
     if ctx.settings.delete_source_after_success:
-        _delete_if_exists(ctx, job.source_container, job.source_name)
+        _delete_blob(source_blob(ctx, job.source_container, job.source_name))
 
 
 def _remove_previous_outputs(ctx: StorageContext, previous: dict | None, current_outputs: list[str]) -> None:
+    """Supprime les sorties d'un traitement précédent qui ne sont plus produites (ex. changement de type).
+
+    Ne supprime jamais hors des containers pseudonymised/ et quarantine/.
+    """
     if not previous:
         return
     settings = ctx.settings
@@ -241,18 +266,26 @@ def _remove_previous_outputs(ctx: StorageContext, previous: dict | None, current
 
 
 def _delete_if_exists(ctx: StorageContext, container: str, name: str) -> int:
+    """Supprime un blob du compte « data » s'il existe ; renvoie 1 s'il a été supprimé, 0 sinon."""
+    return _delete_blob(ctx.blob_service.get_blob_client(container, name))
+
+
+def _delete_blob(blob) -> int:
+    """Supprime le blob s'il existe ; renvoie 1 s'il a été supprimé, 0 sinon."""
     from azure.core.exceptions import ResourceNotFoundError
 
     try:
-        ctx.blob_service.get_blob_client(container, name).delete_blob()
+        blob.delete_blob()
         return 1
     except ResourceNotFoundError:
         return 0
 
 
 def _json(data: dict) -> bytes:
+    """Sérialise en JSON lisible (UTF-8, indenté)."""
     return json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
 
 
 def _now() -> str:
+    """Date et heure UTC au format ISO 8601."""
     return datetime.now(timezone.utc).isoformat()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from .config import Settings
 from .detection.language_pii import LanguagePiiDetector, parse_category_map
@@ -27,13 +28,17 @@ COGNITIVE_SCOPE = "https://cognitiveservices.azure.com/.default"
 
 @dataclass
 class Runtime:
+    """Tout ce qu'il faut pour traiter un job : réglages, services, stockage des correspondances, Blob Storage."""
     settings: Settings
     services: Services
     mapping_store: MappingStore
     blob_service: object | None
+    # Client du compte d'origine, s'il diffère du compte « data » (sinon None : même compte).
+    source_blob_service: object | None = None
 
 
 def credential():
+    """Identité Azure (identité managée sur Azure, compte az login en local)."""
     from azure.identity import DefaultAzureCredential
 
     # Sur Azure, AZURE_CLIENT_ID désigne l'identité managée affectée par l'utilisateur.
@@ -41,6 +46,7 @@ def credential():
 
 
 def load_keys(settings: Settings, cred) -> tuple[bytes, bytes]:
+    """Clés HMAC et AES : variables locales si présentes, sinon secrets Key Vault."""
     if settings.hmac_key_b64 and settings.encryption_key_b64:
         return base64.b64decode(settings.hmac_key_b64), base64.b64decode(settings.encryption_key_b64)
     if not settings.key_vault_url:
@@ -54,6 +60,7 @@ def load_keys(settings: Settings, cred) -> tuple[bytes, bytes]:
 
 
 def _blob_service(settings: Settings, cred):
+    """Client Blob Storage, ou None sans STORAGE_ACCOUNT_URL."""
     if not settings.storage_account_url:
         return None
     from azure.storage.blob import BlobServiceClient
@@ -61,7 +68,23 @@ def _blob_service(settings: Settings, cred):
     return BlobServiceClient(settings.storage_account_url, credential=cred)
 
 
+def _source_blob_service(settings: Settings, cred):
+    """Client du compte d'origine, ou None s'il s'agit du compte « data »."""
+    url = settings.source_storage_account_url
+    if not url or _host(url) == _host(settings.storage_account_url):
+        return None
+    from azure.storage.blob import BlobServiceClient
+
+    return BlobServiceClient(url, credential=cred)
+
+
+def _host(url: str | None) -> str:
+    """Nom d'hôte d'une URL de compte, en minuscules (ex. stdata.blob.core.windows.net)."""
+    return (urlparse(url or "").hostname or "").lower()
+
+
 def _mapping_store(settings: Settings, cred) -> MappingStore:
+    """Stockage Cosmos DB, ou stockage vide sans COSMOS_ENDPOINT."""
     if not settings.cosmos_endpoint:
         return NullMappingStore()
     from azure.cosmos import CosmosClient
@@ -82,7 +105,12 @@ def build_storage_context(settings: Settings) -> SimpleStorageContext:
     blob_service = _blob_service(settings, cred)
     if blob_service is None:
         raise RuntimeError("STORAGE_ACCOUNT_URL requis")
-    return SimpleStorageContext(settings=settings, blob_service=blob_service, mapping_store=_mapping_store(settings, cred))
+    return SimpleStorageContext(
+        settings=settings,
+        blob_service=blob_service,
+        mapping_store=_mapping_store(settings, cred),
+        source_blob_service=_source_blob_service(settings, cred),
+    )
 
 
 def build_runtime(
@@ -93,6 +121,10 @@ def build_runtime(
     enable_language: bool = True,
     enable_verification: bool = True,
 ) -> Runtime:
+    """Crée les clients Azure, charge les prompts et les clés, et assemble les services.
+
+    Échoue tout de suite si un référentiel Markdown est invalide.
+    """
     cred = credential()
 
     blob_service = _blob_service(settings, cred)
@@ -191,4 +223,10 @@ def build_runtime(
     if mapping_store is None:
         mapping_store = _mapping_store(settings, cred)
 
-    return Runtime(settings=settings, services=services, mapping_store=mapping_store, blob_service=blob_service)
+    return Runtime(
+        settings=settings,
+        services=services,
+        mapping_store=mapping_store,
+        blob_service=blob_service,
+        source_blob_service=_source_blob_service(settings, cred),
+    )

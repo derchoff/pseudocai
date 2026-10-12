@@ -23,13 +23,16 @@ FILL = 217  # 0.85 * 255
 
 
 class FakeDetector:
+    """Agent de détection simulé : cherche les valeurs d'un dictionnaire valeur -> type."""
     prompt_sha256 = "fake"
 
     def __init__(self, dictionary, only_first=True):
+        """dictionary : valeur -> type ; only_first : ne signaler que la 1re occurrence."""
         self.dictionary = dictionary
         self.only_first = only_first
 
     def detect(self, lines):
+        """Entités des valeurs du dictionnaire trouvées dans les lignes."""
         out, seen = [], set()
         for line in lines:
             for value, etype in self.dictionary.items():
@@ -40,14 +43,17 @@ class FakeDetector:
 
 
 class FakeVerifier:
+    """Agent de vérification simulé : signale residual_text là où il apparaît encore."""
     prompt_sha256 = "fake"
 
     def __init__(self, residual_text=None, residual_type="ADRESSE"):
+        """residual_text : texte à signaler (None = rien) ; residual_type : son type."""
         self.residual_text = residual_text
         self.residual_type = residual_type
         self.calls = 0
 
     def verify(self, lines):
+        """Compte l'appel et renvoie le résidu sur chaque ligne qui le contient."""
         self.calls += 1
         if self.residual_text is None:
             return []
@@ -59,6 +65,7 @@ class FakeVerifier:
 
 
 def make_text_pdf() -> bytes:
+    """PDF natif d'une page avec les lignes de test LINES."""
     doc = pymupdf.open()
     page = doc.new_page()
     for i, text in enumerate(LINES):
@@ -103,11 +110,13 @@ class TruthOcr:
     """Simule Document Intelligence : renvoie tout le texte visible de la page (natif ET images)."""
 
     def __init__(self, truth_pdf: bytes, confidence: float = 0.95):
+        """truth_pdf : PDF texte dont le contenu est renvoyé comme résultat OCR."""
         self.truth_pdf = truth_pdf
         self.confidence = confidence
         self.calls: list[list[int]] = []
 
     def ocr(self, pdf_bytes, doc, page_indexes):
+        """Texte de truth_pdf pour les pages demandées, présenté comme un résultat OCR."""
         self.calls.append(list(page_indexes))
         truth = pymupdf.open(stream=self.truth_pdf, filetype="pdf")
         pages = []
@@ -125,12 +134,14 @@ class TruthOcr:
 
 @pytest.fixture
 def settings(monkeypatch):
+    """Réglages par défaut du pipeline."""
     for key in ("FORCE_OCR", "VERIFICATION_ROUNDS", "OCR_NATIVE_PAGES"):
         monkeypatch.delenv(key, raising=False)
     return Settings.from_env()
 
 
 def services(**kwargs) -> Services:
+    """Services de test (agents simulés, clés fixes) ; les paramètres remplacent les valeurs par défaut."""
     defaults = dict(
         detector=FakeDetector(DICTIONARY),
         pseudonymizer=Pseudonymizer(b"k" * 32),
@@ -144,6 +155,7 @@ def services(**kwargs) -> Services:
 
 
 def output_text(pdf: bytes) -> str:
+    """Texte de toutes les pages d'un PDF."""
     return "".join(page.get_text() for page in pymupdf.open(stream=pdf, filetype="pdf"))
 
 

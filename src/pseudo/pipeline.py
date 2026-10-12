@@ -42,33 +42,43 @@ log = logging.getLogger(__name__)
 
 
 class Detector(Protocol):
+    """Agent de détection des données personnelles."""
     prompt_sha256: str | None
 
     def detect(self, lines: list[Line]) -> list[Entity]:
+        """Entités trouvées dans les lignes du document."""
         ...
 
 
 class Verifier(Protocol):
+    """Agent de vérification du texte pseudonymisé."""
     prompt_sha256: str | None
 
     def verify(self, pseudonymised_lines: list[tuple[str, str]]) -> list[Entity]:
+        """Données restées en clair dans les lignes pseudonymisées (id, texte)."""
         ...
 
 
 class Classifier(Protocol):
+    """Agent de classification du type de document."""
     prompt_sha256: str | None
 
     def classify(self, pseudonymised_text: str) -> tuple[list[dict], DocTypeCatalog, str]:
+        """Types probables du document : (types bruts, référentiel, empreinte du prompt)."""
         ...
 
 
 class SpanDetector(Protocol):
+    """Détecteur qui renvoie directement des zones (ex. Azure AI Language)."""
+
     def detect(self, lines: list[Line]) -> list[Span]:
+        """Zones détectées dans les lignes du document."""
         ...
 
 
 @dataclass
 class Services:
+    """Services utilisés par le pipeline : agents IA, OCR, jetons, chiffrement, valeurs fictives."""
     detector: Detector
     pseudonymizer: Pseudonymizer
     cipher: ValueCipher
@@ -100,6 +110,7 @@ class PipelineInput:
 
 @dataclass
 class PipelineResult:
+    """Résultat du pipeline : statut, motifs, document produit, correspondances, rapport et occurrences."""
     status: str  # "ok" | "quarantine"
     reasons: list[str] = field(default_factory=list)
     output: bytes | None = None  # document pseudonymisé, au format produit par le renderer
@@ -112,6 +123,11 @@ class PipelineResult:
 
 
 def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Services) -> PipelineResult:
+    """Pseudonymise un document de bout en bout.
+
+    Contrôles, extraction (texte et OCR), détection, jetons, vérification, classification, rendu.
+    Ne touche à aucun stockage : la publication est faite par l'appelant.
+    """
     if isinstance(source, bytes):
         source = PipelineInput(pdf=source)
     pdf_bytes = source.pdf
@@ -292,9 +308,11 @@ def _assign_surrogates(
     de l'originale comme de toute autre vraie valeur du document (comparaison après normalisation)."""
 
     def strategy(entity_type: str) -> str:
+        """Normalisation du type (référentiel, sinon valeur intégrée au code)."""
         return (catalog.strategy(entity_type) if catalog else None) or BUILTIN_STRATEGIES.get(entity_type, DEFAULT_STRATEGY)
 
     def generator(entity_type: str) -> str:
+        """Générateur de valeur fictive du type (référentiel, sinon valeur intégrée au code)."""
         if catalog is not None:
             return catalog.substitution(entity_type)
         return BUILTIN_SUBSTITUTIONS.get(entity_type, DEFAULT_SUBSTITUTION)
@@ -350,6 +368,10 @@ def _rejected(reason: str, report: dict, settings: Settings) -> PipelineResult:
 
 
 def _classify(text: str, settings: Settings, services: Services) -> Classification:
+    """Classe le texte pseudonymisé ; une erreur de l'agent range le document en « non classé ».
+
+    Un référentiel invalide lève l'erreur, pour que le message soit réessayé.
+    """
     if not settings.classification_enabled or services.classifier is None:
         return unclassified(STATUT_DESACTIVEE, settings.unclassified_folder)
     try:
@@ -370,12 +392,14 @@ def _classify(text: str, settings: Settings, services: Services) -> Classificati
 
 
 def _strategy(catalog: FieldCatalog | None, entity_type: str) -> str | None:
+    """Normalisation du type selon le référentiel, ou None sans référentiel."""
     return catalog.strategy(entity_type) if catalog is not None else None
 
 
 def _assign_tokens(
     spans: list[Span], content: DocumentContent, pseudonymizer: Pseudonymizer, catalog: FieldCatalog | None
 ) -> None:
+    """Calcule le jeton de chaque zone à partir de sa valeur normalisée."""
     for s in spans:
         line = content.line(s.line_id)
         s.token = pseudonymizer.token(s.type, s.pseudonym_value(line), _strategy(catalog, s.type))
@@ -408,6 +432,7 @@ def _residuals_to_original(
 def _mapping_records(
     spans: list[Span], content: DocumentContent, services: Services, catalog: FieldCatalog | None
 ) -> list[MappingRecord]:
+    """Une correspondance chiffrée par jeton distinct (valeur d'origine chiffrée + empreinte)."""
     records: dict[str, MappingRecord] = {}
     for s in spans:
         if s.token in records:

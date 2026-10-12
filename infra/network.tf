@@ -73,8 +73,8 @@ locals {
 resource "azurerm_virtual_network" "main" {
   count               = local.private ? 1 : 0
   name                = "vnet-${local.base}"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
+  location            = local.location
+  resource_group_name = local.resource_group_name
   address_space       = [var.vnet_address_space]
   tags                = local.tags
 }
@@ -82,7 +82,7 @@ resource "azurerm_virtual_network" "main" {
 resource "azurerm_subnet" "func" {
   count                = local.private ? 1 : 0
   name                 = "snet-func"
-  resource_group_name  = azurerm_resource_group.main.name
+  resource_group_name  = local.resource_group_name
   virtual_network_name = azurerm_virtual_network.main[0].name
   address_prefixes     = [cidrsubnet(var.vnet_address_space, 2, 0)]
 
@@ -99,7 +99,7 @@ resource "azurerm_subnet" "func" {
 resource "azurerm_subnet" "func_images" {
   count                = local.private && var.enable_image_processing ? 1 : 0
   name                 = "snet-func-img"
-  resource_group_name  = azurerm_resource_group.main.name
+  resource_group_name  = local.resource_group_name
   virtual_network_name = azurerm_virtual_network.main[0].name
   address_prefixes     = [cidrsubnet(var.vnet_address_space, 2, 2)]
 
@@ -115,7 +115,7 @@ resource "azurerm_subnet" "func_images" {
 resource "azurerm_subnet" "endpoints" {
   count                = local.private ? 1 : 0
   name                 = "snet-pe"
-  resource_group_name  = azurerm_resource_group.main.name
+  resource_group_name  = local.resource_group_name
   virtual_network_name = azurerm_virtual_network.main[0].name
   address_prefixes     = [cidrsubnet(var.vnet_address_space, 2, 1)]
 }
@@ -123,7 +123,7 @@ resource "azurerm_subnet" "endpoints" {
 resource "azurerm_private_dns_zone" "zones" {
   for_each            = local.private_dns_zones
   name                = each.value
-  resource_group_name = azurerm_resource_group.main.name
+  resource_group_name = local.resource_group_name
   tags                = local.tags
 }
 
@@ -138,8 +138,8 @@ resource "azurerm_private_dns_zone_virtual_network_link" "links" {
 resource "azurerm_private_endpoint" "pe" {
   for_each            = local.private_endpoints
   name                = "pe-${local.base}-${each.key}"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
+  location            = local.location
+  resource_group_name = local.resource_group_name
   subnet_id           = azurerm_subnet.endpoints[0].id
   tags                = local.tags
 

@@ -15,10 +15,12 @@ IDENTITY: Matrix = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
 
 
 def multiply(a: Matrix, b: Matrix) -> Matrix:
+    """Produit matriciel a · b (appliquer b puis a)."""
     return [[sum(a[i][k] * b[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
 
 
 def invert(m: Matrix) -> Matrix:
+    """Matrice inverse ; lève ValueError si la transformation n'est pas inversible."""
     (a, b, c), (d, e, f), (g, h, i) = m
     det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
     if abs(det) < 1e-12:
@@ -32,6 +34,7 @@ def invert(m: Matrix) -> Matrix:
 
 
 def apply(m: Matrix, x: float, y: float) -> tuple[float, float]:
+    """Image du point (x, y) par la transformation m."""
     xs = m[0][0] * x + m[0][1] * y + m[0][2]
     ys = m[1][0] * x + m[1][1] * y + m[1][2]
     w = m[2][0] * x + m[2][1] * y + m[2][2]
@@ -47,6 +50,7 @@ def apply_quad(m: Matrix, quad: tuple[float, ...]) -> tuple[float, ...]:
 
 
 def bbox(quad: tuple[float, ...]) -> tuple[float, float, float, float]:
+    """Rectangle englobant (x0, y0, x1, y1) d'un quadrilatère."""
     xs, ys = quad[0::2], quad[1::2]
     return min(xs), min(ys), max(xs), max(ys)
 
@@ -73,6 +77,7 @@ def homography(src: tuple[float, ...], dst: tuple[float, ...]) -> Matrix:
 
 
 def scale(factor: float) -> Matrix:
+    """Matrice de mise à l'échelle uniforme (ex. points -> pixels)."""
     return [[factor, 0.0, 0.0], [0.0, factor, 0.0], [0.0, 0.0, 1.0]]
 
 
@@ -87,8 +92,10 @@ class PageGeometry:
 
 
 def dump_geometry(pages: list[PageGeometry]) -> bytes:
+    """Sérialise la géométrie des pages en JSON (fichier transforms.json)."""
     return json.dumps({"pages": [asdict(p) for p in pages]}).encode("utf-8")
 
 
 def load_geometry(data: bytes) -> list[PageGeometry]:
+    """Relit la géométrie des pages depuis transforms.json."""
     return [PageGeometry(**page) for page in json.loads(data)["pages"]]

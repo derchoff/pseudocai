@@ -32,6 +32,7 @@ from pseudo.runtime import credential, load_keys
 
 
 def main() -> int:
+    """Affiche les valeurs d'origine de jetons, ou de toutes les valeurs remplacées d'un document publié."""
     parser = argparse.ArgumentParser(description="Ré-identification de valeurs pseudonymisées")
     sub = parser.add_subparsers(dest="mode", required=True)
     tokens = sub.add_parser("jetons", help="jetons -> valeurs d'origine")
@@ -58,6 +59,7 @@ def main() -> int:
     mappings = database.get_container_client(settings.cosmos_mapping_container)
 
     def original(token: str) -> str:
+        """Valeur d'origine d'un jeton : lecture dans Cosmos DB puis déchiffrement."""
         token_id = token.strip("[]")
         item = mappings.read_item(item=token_id, partition_key=token_id)
         return cipher.decrypt(f"[{token_id}]", item["ciphertext"])

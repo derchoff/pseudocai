@@ -77,7 +77,9 @@ Mises à jour partielles :
 
 ## Ressources déployées
 
-Toutes les ressources sont créées dans le groupe **`rg-<projet>-<env>`**. Les noms dépendent de
+Toutes les ressources sont créées dans le groupe **`rg-<projet>-<env>`**, ou dans le groupe choisi
+avec `resource_group_name` (voir [Installer dans un resource group et sur un storage existants](#installer-dans-un-resource-group-et-sur-un-storage-existants)).
+Les noms dépendent de
 `project`, `environment` et d'un **suffixe aléatoire de 4 caractères**, tiré une fois pour toutes
 pour garantir l'unicité des noms dans Azure.
 
@@ -88,11 +90,11 @@ Les exemples ci-dessous correspondent à `project = "pseudo"`, `environment = "d
 
 | Ressource (type affiché dans le portail) | Nom (exemple) | Fichier Terraform | Rôle |
 |---|---|---|---|
-| Groupe de ressources | `rg-pseudo-dev` | `main.tf` | Contient toutes les ressources du service. |
-| Compte de stockage | `stpseudodevmdg6data` | `storage.tf` | Données : containers `incoming` (dépôt), `work` (intermédiaires des images), `pseudonymised`, `quarantine` (sorties) et `config` (prompts, versionnés). Règles de purge automatique. |
+| Groupe de ressources | `rg-pseudo-dev` | `main.tf` | Contient toutes les ressources du service. Créé par Terraform, sauf avec `create_resource_group = false`. |
+| Compte de stockage | `stpseudodevmdg6data` | `storage.tf` | Données : containers `incoming` (dépôt, sauf storage d'origine existant), `work` (intermédiaires des images), `pseudonymised`, `quarantine` (sorties) et `config` (prompts, versionnés). Règles de purge automatique. |
 | Compte de stockage | `stpseudodevmdg6func` | `storage.tf` | Stockage interne des Function Apps : runtime et paquets de déploiement (`deployments`, `deployments-images`). |
 | Espace de noms Service Bus | `sb-pseudo-dev-mdg6` | `messaging.tf` | Files `incoming-events`, `pdf-jobs` et `image-jobs`, chacune avec sa dead-letter. Ce sont les liens entre les étapes. |
-| Rubrique système Event Grid | `egst-pseudo-dev-data` | `messaging.tf` | Émet les événements « blob créé » du compte de données. L'abonnement `incoming-created-to-servicebus` les filtre (container `incoming`, extensions acceptées) et les envoie vers `incoming-events`. |
+| Rubrique système Event Grid | `egst-pseudo-dev-data` | `messaging.tf` | Émet les événements « blob créé » du **storage d'origine** (le compte de données par défaut). L'abonnement `incoming-created-to-servicebus` les filtre (container d'entrée, extensions acceptées) et les envoie vers `incoming-events`. Avec un storage d'origine existant, elle est créée dans **son** resource group (`egst-pseudo-dev-source`), sauf si une rubrique existe déjà. |
 | Plan App Service (Flex Consumption) | `asp-pseudo-dev` | `function.tf` (module `flex_function`) | Plan de l'app principale (un plan par app Flex). |
 | Application de fonction | `func-pseudo-dev-mdg6` | `function.tf` (module `flex_function`) | **App principale** : étape ① routage (`route_incoming`) et étape ③ pseudonymisation (`pseudonymise_job`). |
 | Identité managée | `id-pseudo-dev-func` | `main.tf` | Identité de l'app principale : tous ses accès (stockage, files, IA, Key Vault, Cosmos DB) passent par elle. |
@@ -120,6 +122,7 @@ Les exemples ci-dessous correspondent à `project = "pseudo"`, `environment = "d
 | Ressource | Rôle |
 |---|---|
 | Compte de stockage de l'état Terraform (ex. `sttfstate…` dans `rg-tfstate`) | Créé à la main avant le premier déploiement (voir `backend.hcl`). Il contient l'état Terraform, **y compris les clés générées** : accès à restreindre. |
+| Storage d'origine existant (`source_storage_account_id`) | Non géré par Terraform. Le déploiement y ajoute seulement : la rubrique Event Grid (dans son resource group) et son abonnement, le container d'entrée si `create_source_container = true`, et les droits de lecture des Functions sur ce container. |
 
 Pour lister les ressources réellement présentes :
 
@@ -147,6 +150,12 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 | `subscription_id` | — | Obligatoire avec azurerm 5.x ; diffère selon l'environnement. |
 | `project`, `environment` | `pseudo`, `dev` | Nommage et isolation dev/rec/prod. Un suffixe aléatoire garantit l'unicité globale des noms. |
 | `location` | `francecentral` | Résidence des données. |
+| `resource_group_name` | `null` (`rg-<project>-<environment>`) | Installer le service dans un resource group imposé. |
+| `create_resource_group` | `true` | `false` : le resource group existe déjà ; Terraform ne le crée ni ne le supprime. |
+| `source_storage_account_id` | `null` | Storage **existant** où arrivent les documents (autre resource group ou abonnement possible). `null` : container d'entrée du compte de données. |
+| `source_container_name` | `incoming` | Container d'arrivée des documents. |
+| `create_source_container` | `false` | Storage d'origine existant : créer le container s'il n'existe pas. |
+| `source_system_topic_name` | `null` | Storage d'origine qui a déjà une rubrique Event Grid (Azure n'en accepte qu'une par compte) : son nom. |
 | `openai_location` | `swedencentral` | Les modèles ne sont pas disponibles dans toutes les régions. |
 | `openai_model_name` / `_version` | `gpt-5-mini` / `2025-08-07` | Le modèle évolue (dépréciations, nouveaux modèles). **Vérifier sa disponibilité** dans la région avant d'appliquer. |
 | `openai_deployment_sku` | `DataZoneStandard` | Traitement des données dans la zone UE. `Standard` reste régional, `GlobalStandard` est à proscrire pour des données personnelles. |
@@ -164,8 +173,8 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 | `image_function_max_instances` | `5` | App images : parallélisation de la préparation. |
 | `image_function_memory_mb` | `4096` | App images : une photo de 12 Mpx décompressée et prétraitée demande de la marge. |
 | `servicebus_max_delivery_count` | `5` | Nombre de tentatives avant dead-letter. |
-| `delete_source_after_success` | `false` | Politique de conservation des originaux. |
-| `incoming_retention_days`, `quarantine_retention_days` | `7`, `30` | Minimisation des données (RGPD) : purge automatique des dépôts et de la quarantaine. |
+| `delete_source_after_success` | `false` | Politique de conservation des originaux. À `true`, les Functions reçoivent le droit d'écriture sur le container d'entrée (lecture seule sinon). |
+| `incoming_retention_days`, `quarantine_retention_days` | `7`, `30` | Minimisation des données (RGPD) : purge automatique des dépôts et de la quarantaine. La purge des dépôts ne s'applique qu'au compte de données, jamais à un storage d'origine existant. |
 | `work_retention_days` | `1` | Purge des fichiers intermédiaires d'un traitement interrompu (ils sont normalement supprimés dès la fin du traitement). |
 | `key_vault_purge_protection` | `true` | À mettre à `false` uniquement en bac à sable. |
 | `reidentification_principal_ids` | `[]` | Groupe Entra autorisé à ré-identifier les jetons. |
@@ -173,7 +182,7 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 | `tags` | `{}` | Gouvernance et refacturation. |
 
 **Non variabilisé volontairement** :
-- Noms des containers (`incoming`, `work`, `pseudonymised`, `quarantine`, `config`) et des files
+- Noms des containers de sortie (`work`, `pseudonymised`, `quarantine`, `config`) et des files
   (`incoming-events`, `pdf-jobs`, `image-jobs`) : ce sont des contrats entre le code et
   l'infrastructure.
 - Format de sortie des images : toujours le **format d'origine** (choix fonctionnel).
@@ -234,6 +243,80 @@ préparation, l'app principale pour le rendu de la sortie.
 images est supprimée et Event Grid ne transmet plus les images. Une image renommée en `.pdf`
 est traitée comme un PDF : sa lecture échoue et elle part en `quarantine/non-classe/` avec le
 motif `pdf_illisible`.
+
+## Installer dans un resource group et sur un storage existants
+
+Le service peut s'installer dans **n'importe quel resource group** et se brancher sur un **storage
+existant** où arrivent déjà les documents. Le storage de destination (sorties, quarantaine,
+prompts) reste le compte de données créé par le déploiement.
+
+```hcl
+# terraform.tfvars
+resource_group_name   = "rg-client-pseudonymisation"
+create_resource_group = false # le groupe existe déjà
+
+source_storage_account_id = "/subscriptions/<id>/resourceGroups/rg-metier/providers/Microsoft.Storage/storageAccounts/stmetier"
+source_container_name     = "factures-entrantes"
+create_source_container   = false # true pour que Terraform le crée
+source_system_topic_name  = null  # nom de la rubrique Event Grid si le compte en a déjà une
+```
+
+```mermaid
+flowchart LR
+    subgraph SRC["Storage d'origine (existant, autre RG ou abonnement possible)"]
+        IN[(factures-entrantes/)]
+        EG[Rubrique système Event Grid<br/>créée ou réutilisée]
+    end
+    subgraph RG["Resource group du service (créé ou existant)"]
+        SB[[Service Bus<br/>incoming-events]]
+        F[Functions]
+        DATA[(Compte de données<br/>work, pseudonymised,<br/>quarantine, config)]
+    end
+    IN -- BlobCreated --> EG --> SB --> F
+    F -- lecture seule --> IN
+    F -- sorties --> DATA
+```
+
+**Ce que le déploiement fait sur le storage d'origine**, et rien d'autre :
+- il crée la rubrique système Event Grid dans le resource group et la région du compte, ou
+  réutilise celle qui existe (`source_system_topic_name`) en lui ajoutant un abonnement nommé
+  `<project>-<environment>-to-servicebus` ;
+- il donne aux identités des Functions le rôle **Storage Blob Data Reader** sur le container
+  d'entrée seulement (**Contributor** si `delete_source_after_success = true`) ;
+- il crée le container si `create_source_container = true`.
+
+Aucune règle de purge n'y est posée et ses paramètres (réseau, clés, versionnement) ne sont pas
+modifiés.
+
+**Droits nécessaires pour exécuter Terraform** :
+
+| Où | Droit | Pourquoi |
+|---|---|---|
+| Resource group du service | Owner (ou Contributor + User Access Administrator) | Créer les ressources et leurs affectations de rôles. Avec `create_resource_group = true`, ces droits sont nécessaires sur l'abonnement. |
+| Resource group du storage d'origine | Contributor (EventGrid) | Créer la rubrique et son abonnement. |
+| Container d'entrée | User Access Administrator (ou Owner) | Donner aux Functions l'accès en lecture. |
+
+**Points d'attention** :
+- **Une seule rubrique Event Grid par compte** : si le compte en a déjà une (créée par un autre
+  service ou depuis le portail), le déploiement échoue avec un message du type « only one system
+  topic is allowed ». Renseigner alors `source_system_topic_name` : la rubrique doit avoir une
+  **identité managée système**, qui reçoit le droit d'écrire dans la file `incoming-events`.
+- **Réseau** : si le pare-feu du storage d'origine est fermé, il doit autoriser les Functions,
+  par exemple avec une règle de réseau virtuel sur le sous-réseau `snet-func` en mode réseau
+  privé. Le déploiement ne modifie pas ce pare-feu.
+- **Autre abonnement** : il doit être dans le même tenant Entra ID. Terraform y accède avec le
+  même compte, via le provider `azurerm.source`.
+- **Dépôts de test** : `./scripts/upload-test.ps1` dépose dans le storage et le container
+  d'origine (sorties Terraform `source_storage_account_name` et `source_container_name`).
+  L'option `grant_deployer_data_access` ne donne aucun droit sur un storage d'origine existant.
+
+Les deux configurations sont vérifiées sans Azure par `infra/tests/source.tftest.hcl`, qui
+utilise des providers simulés :
+
+```powershell
+terraform -chdir=infra init -backend=false
+terraform -chdir=infra test
+```
 
 ## Mode réseau privé
 
@@ -308,3 +391,19 @@ Les documents déjà publiés ne changent pas. Redéposez-les dans `incoming/` p
 | Changement | Effet |
 |---|---|
 | Nouvelle variable `handwriting_policy`, **`quarantaine` par défaut** | Tout document où l'OCR détecte de l'écriture manuscrite part désormais en `quarantine/non-classe/` (motif `manuscrit_detecte`), sans appel aux agents IA. Pour garder l'ancien comportement, ajouter `handwriting_policy = "traiter"` dans `terraform.tfvars`. |
+
+## Mise à jour : resource group et storage d'origine variabilisés
+
+Sans nouvelle variable dans `terraform.tfvars`, l'installation existante est conservée. Le plan
+déplace quelques ressources dans l'état Terraform, sans les recréer :
+
+| Changement | Effet |
+|---|---|
+| `azurerm_resource_group.main` → `azurerm_resource_group.main[0]` | Simple déplacement dans l'état (bloc `moved`). |
+| Rubrique Event Grid `data` → `source[0]` | Simple déplacement dans l'état. Elle reste sur le compte de données. |
+| Droits sur `incoming` | Remplacés par un rôle **Storage Blob Data Reader**, au lieu de Contributor, sauf si `delete_source_after_success = true`. |
+| Nouveaux app settings `SOURCE_STORAGE_ACCOUNT_URL` et `INCOMING_CONTAINER` | Valeurs identiques au compte de données et à `incoming`. |
+
+Passer ensuite à un storage d'origine existant supprime le container `incoming` du compte de
+données et sa règle de purge, puis recrée la rubrique Event Grid sur le nouveau compte : vider
+`incoming` avant d'appliquer.

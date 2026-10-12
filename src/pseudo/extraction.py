@@ -41,6 +41,7 @@ def classify_page(page: pymupdf.Page, min_native_chars: int, image_coverage_thre
 
 
 def extract_native_page(page: pymupdf.Page) -> PageContent:
+    """Lit la couche texte d'une page, une ligne par ligne PyMuPDF, avec la position de chaque mot."""
     groups: dict[tuple[int, int], list[tuple]] = {}
     for w in page.get_text("words", sort=True):
         groups.setdefault((w[5], w[6]), []).append(w)
@@ -53,7 +54,10 @@ def extract_native_page(page: pymupdf.Page) -> PageContent:
 
 
 class OcrEngine(Protocol):
+    """Moteur OCR : renvoie les lignes et mots positionnés des pages demandées."""
+
     def ocr(self, pdf_bytes: bytes, doc: pymupdf.Document, page_indexes: list[int]) -> list[PageContent]:
+        """OCR des pages page_indexes (0-based) ; positions en points, dans le repère de la page."""
         ...
 
 
@@ -64,11 +68,13 @@ class DocumentIntelligenceOcr:
     sur des plages du texte) : les mots concernés sont marqués Word.handwritten."""
 
     def __init__(self, client, model_id: str = "prebuilt-read", handwriting_min_confidence: float = 0.5):
+        """Les passages manuscrits sous handwriting_min_confidence ne sont pas marqués."""
         self._client = client
         self._model_id = model_id
         self._handwriting_min_confidence = handwriting_min_confidence
 
     def ocr(self, pdf_bytes: bytes, doc: pymupdf.Document, page_indexes: list[int]) -> list[PageContent]:
+        """Envoie le PDF à Document Intelligence pour les pages demandées et convertit le résultat."""
         from azure.ai.documentintelligence.models import AnalyzeDocumentRequest
 
         if not page_indexes:
@@ -124,6 +130,7 @@ def build_ocr_page(page: pymupdf.Page, di_page, handwritten: list[tuple[int, int
 
 
 def _di_word(w, sx: float, sy: float, handwritten: list[tuple[int, int]] | None = None) -> Word:
+    """Convertit un mot Document Intelligence en Word : rectangle, quadrilatère, confiance, manuscrit."""
     poly = list(w.polygon or [])
     xs, ys = poly[0::2], poly[1::2]
     rect = (min(xs) * sx, min(ys) * sy, max(xs) * sx, max(ys) * sy) if xs else (0, 0, 0, 0)
@@ -169,6 +176,10 @@ def extract_document(
     force_ocr: bool,
     ocr_native_pages: bool = True,
 ) -> list[PageContent]:
+    """Texte positionné de toutes les pages : couche texte pour les pages natives, OCR sinon.
+
+    Avec ocr_native_pages, les pages natives passent aussi à l'OCR pour lire le texte de leurs images.
+    """
     native: dict[int, PageContent] = {}
     scanned: list[int] = []
     for page in doc:

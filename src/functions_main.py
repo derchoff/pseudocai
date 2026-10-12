@@ -48,6 +48,7 @@ def get_storage() -> SimpleStorageContext:
 @bp.service_bus_queue_output(arg_name="pdfjobs", queue_name="%PDF_QUEUE_NAME%", connection="ServiceBusConnection")
 @bp.service_bus_queue_output(arg_name="imagejobs", queue_name="%IMAGE_QUEUE_NAME%", connection="ServiceBusConnection")
 def route_incoming(msg: func.ServiceBusMessage, pdfjobs: func.Out[str], imagejobs: func.Out[str]) -> None:
+    """Function Service Bus : route un dépôt dans incoming/ vers la file PDF ou image, ou en quarantaine."""
     result = route_event(msg.get_body(), get_storage())
     if result.queue == QUEUE_PDF:
         pdfjobs.set(result.job.to_json())
@@ -59,6 +60,7 @@ def route_incoming(msg: func.ServiceBusMessage, pdfjobs: func.Out[str], imagejob
 @bp.function_name("pseudonymise_job")
 @bp.service_bus_queue_trigger(arg_name="msg", queue_name="%PDF_QUEUE_NAME%", connection="ServiceBusConnection")
 def pseudonymise_job(msg: func.ServiceBusMessage) -> None:
+    """Function Service Bus : pseudonymise le document d'un job de la file pdf-jobs."""
     logging.info("Job %s (tentative %s)", msg.message_id, msg.delivery_count)
     status = handle_pdf_job(msg.get_body(), get_runtime())
     logging.info("Job %s traité : %s", msg.message_id, status)
