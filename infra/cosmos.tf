@@ -92,3 +92,19 @@ resource "azurerm_cosmosdb_sql_role_assignment" "reidentification" {
   principal_id        = each.value
   scope               = azurerm_cosmosdb_account.main.id
 }
+
+# Traçabilité RGPD : chaque requête plan de données (lecture/écriture, y compris les accès aux
+# mappings et occurrences, donc toute ré-identification) est journalisée dans Log Analytics.
+# Les entrées ne contiennent que des identifiants (jetons, documentId) : aucune valeur d'origine.
+resource "azurerm_monitor_diagnostic_setting" "cosmos" {
+  name                       = "diag-cosmos"
+  target_resource_id         = azurerm_cosmosdb_account.main.id
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+
+  enabled_log {
+    category = "DataPlaneRequests"
+  }
+  enabled_log {
+    category = "ControlPlaneRequests"
+  }
+}
