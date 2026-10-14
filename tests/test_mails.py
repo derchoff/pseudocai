@@ -242,3 +242,44 @@ def test_small_inline_logo_is_removed_not_quarantined(settings):
     assert report["corps"]["images_integrees_retirees"] == 1
     body = next(v for k, v in files.items() if k.endswith("body.html")).decode("utf-8")
     assert "cid:" not in body
+
+
+def test_queue_sender_sends_all_messages_in_batches(monkeypatch):
+    """Les tâches des pièces jointes partent toutes, en plusieurs lots si un lot est plein."""
+    import azure.servicebus
+
+    from pseudo.queues import QueueSender
+
+    sent = []
+
+    class Batch(list):
+        def add_message(self, message):
+            if len(self) == 2:
+                raise ValueError("lot plein")
+            self.append(str(message))
+
+    class Sender:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        create_message_batch = staticmethod(Batch)
+
+        def send_messages(self, batch):
+            sent.append(list(batch))
+
+    class Client:
+        def __init__(self, fully_qualified_namespace, credential):
+            self.namespace = fully_qualified_namespace
+
+        def get_queue_sender(self, queue):
+            assert queue == "pdf-jobs"
+            return Sender()
+
+    monkeypatch.setattr(azure.servicebus, "ServiceBusClient", Client)
+    QueueSender("sb.servicebus.windows.net", credential=None).send("pdf-jobs", ["a", "b", "c", "d", "e"])
+    assert sent == [["a", "b"], ["c", "d"], ["e"]]
+    QueueSender("sb.servicebus.windows.net", credential=None).send("pdf-jobs", [])
+    assert len(sent) == 3  # rien à envoyer : aucun lot

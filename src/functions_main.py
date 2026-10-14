@@ -10,8 +10,8 @@ Chaque déclencheur lit une file Service Bus. Une exception remet le message dan
 """
 
 import logging
+import os
 import threading
-from typing import List
 
 import azure.functions as func
 
@@ -19,14 +19,16 @@ from pseudo.config import Settings
 from pseudo.handler import handle_pdf_job
 from pseudo.outputs import SimpleStorageContext
 from pseudo.mails.split import handle_mail_job
+from pseudo.queues import QueueSender
 from pseudo.router import QUEUE_IMAGE, QUEUE_MAIL, QUEUE_PDF, route_event
-from pseudo.runtime import Runtime, build_runtime, build_storage_context
+from pseudo.runtime import Runtime, build_runtime, build_storage_context, credential
 
 bp = func.Blueprint()
 
 _lock = threading.Lock()
 _runtime: Runtime | None = None
 _storage: SimpleStorageContext | None = None
+_sender: QueueSender | None = None
 
 
 def get_runtime() -> Runtime:
@@ -45,6 +47,15 @@ def get_storage() -> SimpleStorageContext:
         if _storage is None:
             _storage = build_storage_context(Settings.from_env())
         return _storage
+
+
+def get_sender() -> QueueSender:
+    """Envoi de plusieurs messages Service Bus (tâches des pièces jointes d'un mail)."""
+    global _sender
+    with _lock:
+        if _sender is None:
+            _sender = QueueSender.from_env(credential())
+        return _sender
 
 
 @bp.function_name("route_incoming")
@@ -77,16 +88,16 @@ def pseudonymise_job(msg: func.ServiceBusMessage) -> None:
 
 @bp.function_name("split_mail")
 @bp.service_bus_queue_trigger(arg_name="msg", queue_name="%MAIL_QUEUE_NAME%", connection="ServiceBusConnection")
-@bp.service_bus_queue_output(arg_name="pdfjobs", queue_name="%PDF_QUEUE_NAME%", connection="ServiceBusConnection")
-@bp.service_bus_queue_output(arg_name="imagejobs", queue_name="%IMAGE_QUEUE_NAME%", connection="ServiceBusConnection")
-def split_mail(msg: func.ServiceBusMessage, pdfjobs: func.Out[List[str]], imagejobs: func.Out[List[str]]) -> None:
-    """Function Service Bus : découpe un mail et envoie une tâche par pièce jointe (PDF ou image)."""
+def split_mail(msg: func.ServiceBusMessage) -> None:
+    """Function Service Bus : découpe un mail et envoie une tâche par pièce jointe (PDF ou image).
+
+    Plusieurs messages à envoyer : SDK Service Bus (une liaison de sortie n'en accepte qu'un).
+    """
     logging.info("Mail %s (tentative %s)", msg.message_id, msg.delivery_count)
     children = handle_mail_job(msg.get_body(), get_runtime())
     pdf = [body for queue, body in children if queue == QUEUE_PDF]
     images = [body for queue, body in children if queue == QUEUE_IMAGE]
-    if pdf:
-        pdfjobs.set(pdf)
-    if images:
-        imagejobs.set(images)
+    sender = get_sender()
+    sender.send(os.environ["PDF_QUEUE_NAME"], pdf)
+    sender.send(os.environ["IMAGE_QUEUE_NAME"], images)
     logging.info("Mail %s découpé : %d pièce(s) PDF, %d image(s)", msg.message_id, len(pdf), len(images))
