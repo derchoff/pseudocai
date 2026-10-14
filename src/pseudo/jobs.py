@@ -1,7 +1,9 @@
 """Messages échangés entre les étapes (files Service Bus).
 
     incoming/ ──événement──► routeur ──job──► file « pdf-jobs »  ──► pseudonymisation
-                                     └─job──► file « image-jobs » ──► préparation image ──job──► « pdf-jobs »
+                                     ├─job──► file « image-jobs » ──► préparation image ──job──► « pdf-jobs »
+                                     └─job──► file « mail-jobs »  ──► découpage du mail ──► une tâche par
+                                                                     pièce jointe (« pdf-jobs » / « image-jobs »)
 
 Les fichiers ne sont jamais déplacés : le document reste dans incoming/ et seul le job avance.
 Le job transporte le contexte : identifiant de corrélation, document d'origine, format, et pour
@@ -18,6 +20,7 @@ from datetime import datetime, timezone
 
 ORIGIN_PDF = "pdf"
 ORIGIN_IMAGE = "image"
+ORIGIN_MAIL = "mail"
 
 
 @dataclass
@@ -42,9 +45,13 @@ class Job:
     source_container: str
     source_name: str  # chemin du document dans incoming/
     source_format: str  # pdf, jpeg, png, tiff, webp, bmp, heif
-    origin: str  # "pdf" | "image"
+    origin: str  # "pdf" | "image" | "mail"
     received_at: str
     prepared: PreparedImage | None = None
+    # Pièce jointe d'un mail : {"mail": dossier de travail du mail, "part": n° de la pièce,
+    # "status": "quarantine" si la préparation de l'image l'a refusée, "reasons", "report"}.
+    # Son résultat est écrit dans work/ et le mail est publié en entier par la finalisation.
+    parent: dict | None = None
 
     @classmethod
     def new(cls, source_url: str, container: str, name: str, source_format: str, origin: str) -> "Job":

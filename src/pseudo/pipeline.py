@@ -1,4 +1,5 @@
-"""Orchestration de bout en bout pour un PDF (indépendante d'Azure Functions, donc testable)."""
+"""Orchestration de bout en bout pour un PDF, une image préparée ou un texte déjà extrait (corps et
+en-têtes d'un mail). Indépendante d'Azure Functions, donc testable."""
 
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ from .classification import (
 from .config import Settings
 from .doctypes import DocTypeCatalog
 from .detection.regex_rules import detect_regex
+from .exceptions import apply_exceptions
 from .extraction import OcrEngine, extract_document
 from .fields import BUILTIN_STRATEGIES, BUILTIN_SUBSTITUTIONS, DEFAULT_STRATEGY, DEFAULT_SUBSTITUTION, FieldCatalog
 from .models import DocumentContent, Entity, Line, PageContent, Span
@@ -106,6 +108,11 @@ class PipelineInput:
     force_ocr: bool = False  # True pour une image : toutes les pages sont des « scans »
     renderer: Renderer | None = None  # produit le document de sortie (défaut : PDF caviardé)
     source: dict = field(default_factory=dict)  # origine et préparation, ajoutées au rapport
+    # Texte déjà extrait (corps d'un mail…) : ni PDF, ni OCR, ni rendu ; l'appelant produit la sortie
+    # à partir de PipelineResult.spans.
+    content: DocumentContent | None = None
+    # False pour une partie d'un ensemble (pièce jointe d'un mail) : l'ensemble est classé une fois.
+    classify: bool = True
 
 
 @dataclass
@@ -120,6 +127,9 @@ class PipelineResult:
     classification: Classification | None = None
     # Une entrée par zone remplacée : jeton, type, valeur fictive, page, position (sans valeur d'origine).
     occurrences: list[dict] = field(default_factory=list)
+    token_text: str | None = None  # texte pseudonymisé avec les jetons (sert au classement d'un ensemble)
+    content: DocumentContent | None = None  # texte analysé
+    spans: list[Span] = field(default_factory=list)  # zones remplacées, valeurs fictives comprises
 
 
 def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Services) -> PipelineResult:
@@ -130,13 +140,128 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
     """
     if isinstance(source, bytes):
         source = PipelineInput(pdf=source)
-    pdf_bytes = source.pdf
     started = time.monotonic()
     report: dict = {"pipeline_version": "0.2.0"}
     if source.source:
         report["source"] = source.source
     reasons: list[str] = []
 
+    if source.content is not None:
+        content = source.content
+        lines = content.lines()
+        report["lignes"] = len(lines)
+    else:
+        extracted = _open_and_extract(source, settings, services, report, reasons)
+        if isinstance(extracted, PipelineResult):
+            return extracted
+        content = extracted
+        lines = content.lines()
+
+    # 3. Détection (agent IA + filets de sécurité) -----------------------------------------
+    catalog = services.fields() if services.fields else None
+    if catalog is not None:
+        report["champs"] = list(catalog.types)
+    entities = services.detector.detect(lines)
+    spans, unresolved = resolve_entities(entities, content, settings.fuzzy_min_score)
+    spans += detect_regex(lines)
+    if services.language is not None:
+        spans += services.language.detect(lines)
+    spans = merge_spans(spans, content)
+    spans = merge_spans(spans + propagate(spans, content, settings.propagation_min_length), content)
+    exceptions = catalog.exceptions if catalog is not None else None
+    spans = apply_exceptions(spans, content, exceptions)
+    _assign_tokens(spans, content, services.pseudonymizer, catalog)
+    report["prompt_detection_sha256"] = services.detector.prompt_sha256
+
+    # 4. Contrôle qualité par l'agent vérificateur -----------------------------------------
+    rounds_done = 0
+    still_finding = False
+    if services.verifier is not None:
+        for _ in range(settings.verification_rounds):
+            rounds_done += 1
+            pseudo_lines = pseudonymise_document(content, spans)
+            residual_entities = services.verifier.verify([(pl.id, pl.text) for pl in pseudo_lines])
+            residual_spans, residual_unresolved = _residuals_to_original(
+                residual_entities, pseudo_lines, content, settings.fuzzy_min_score
+            )
+            unresolved += residual_unresolved
+            before = coverage_signature(spans)
+            candidate = merge_spans(spans + residual_spans, content)
+            candidate = merge_spans(candidate + propagate(candidate, content, settings.propagation_min_length), content)
+            candidate = apply_exceptions(candidate, content, exceptions)
+            still_finding = coverage_signature(candidate) != before
+            if not still_finding:
+                break
+            spans = candidate
+            _assign_tokens(spans, content, services.pseudonymizer, catalog)
+        report["prompt_verification_sha256"] = services.verifier.prompt_sha256
+        if still_finding:
+            reasons.append("residus_apres_verification")
+    report["tours_verification"] = rounds_done
+
+    if unresolved:
+        report["entites_non_localisees"] = len(unresolved)
+        if settings.quarantine_on_unlocated:
+            reasons.append("entites_non_localisees")
+
+    report["entites_par_type"] = dict(Counter(s.type for s in spans))
+    report["entites_par_source"] = dict(Counter(s.source for s in spans))
+    records = _mapping_records(spans, content, services, catalog)
+    report["jetons_distincts"] = len(records)
+    text = render_text(content, pseudonymise_document(content, spans))
+
+    token_text = text
+
+    # 5. Classification du type de document (sur le texte pseudonymisé) ----------------------
+    if source.classify:
+        classification = classify_text(text, settings, services)
+    else:
+        classification = unclassified(STATUT_NON_APPLICABLE, settings.unclassified_folder)
+    report["classification"] = classification.to_dict()
+
+    # 6. Valeurs fictives (mode substitution) : les jetons ont servi à la vérification et à la
+    #    classification ; seul le document publié reçoit des valeurs réalistes.
+    report["mode_sortie"] = settings.output_mode
+    if settings.output_mode == "substitution":
+        if services.surrogates is None:
+            raise RuntimeError("Mode substitution sans fabrique de valeurs fictives (services.surrogates)")
+        _assign_surrogates(spans, content, catalog, services.surrogates)
+        text = render_text(content, pseudonymise_document(content, spans))
+    occurrences = _occurrences(spans, content)
+
+    # 7. Rendu (un texte déjà extrait est rendu par l'appelant) -------------------------------
+    output = None
+    if source.content is None or source.renderer is not None:
+        renderer = source.renderer or render_pdf
+        output = renderer(source.pdf, content, spans, settings.ocr_render_dpi)
+    report["duree_secondes"] = round(time.monotonic() - started, 2)
+
+    status = "quarantine" if reasons else "ok"
+    report["statut"] = status
+    report["motifs"] = reasons
+    return PipelineResult(
+        status=status,
+        reasons=reasons,
+        output=output,
+        text=text,
+        records=records,
+        report=report,
+        classification=classification,
+        occurrences=occurrences,
+        token_text=token_text,
+        content=content,
+        spans=spans,
+    )
+
+
+def _open_and_extract(
+    source: PipelineInput, settings: Settings, services: Services, report: dict, reasons: list[str]
+) -> DocumentContent | PipelineResult:
+    """Ouvre le PDF, le contrôle et en extrait le texte positionné (couche texte et OCR).
+
+    Renvoie un PipelineResult de quarantaine si le document est refusé avant la détection.
+    """
+    pdf_bytes = source.pdf
     # 1. Ouverture et contrôles préalables -------------------------------------------------
     try:
         doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
@@ -205,89 +330,7 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
         report["pages_manuscrites"] = sorted(handwritten)
         if settings.handwriting_policy == "quarantaine":
             return _rejected("manuscrit_detecte", report, settings)
-
-    # 3. Détection (agent IA + filets de sécurité) -----------------------------------------
-    catalog = services.fields() if services.fields else None
-    if catalog is not None:
-        report["champs"] = list(catalog.types)
-    entities = services.detector.detect(lines)
-    spans, unresolved = resolve_entities(entities, content, settings.fuzzy_min_score)
-    spans += detect_regex(lines)
-    if services.language is not None:
-        spans += services.language.detect(lines)
-    spans = merge_spans(spans, content)
-    spans = merge_spans(spans + propagate(spans, content, settings.propagation_min_length), content)
-    _assign_tokens(spans, content, services.pseudonymizer, catalog)
-    report["prompt_detection_sha256"] = services.detector.prompt_sha256
-
-    # 4. Contrôle qualité par l'agent vérificateur -----------------------------------------
-    rounds_done = 0
-    still_finding = False
-    if services.verifier is not None:
-        for _ in range(settings.verification_rounds):
-            rounds_done += 1
-            pseudo_lines = pseudonymise_document(content, spans)
-            residual_entities = services.verifier.verify([(pl.id, pl.text) for pl in pseudo_lines])
-            residual_spans, residual_unresolved = _residuals_to_original(
-                residual_entities, pseudo_lines, content, settings.fuzzy_min_score
-            )
-            unresolved += residual_unresolved
-            before = coverage_signature(spans)
-            candidate = merge_spans(spans + residual_spans, content)
-            candidate = merge_spans(candidate + propagate(candidate, content, settings.propagation_min_length), content)
-            still_finding = coverage_signature(candidate) != before
-            if not still_finding:
-                break
-            spans = candidate
-            _assign_tokens(spans, content, services.pseudonymizer, catalog)
-        report["prompt_verification_sha256"] = services.verifier.prompt_sha256
-        if still_finding:
-            reasons.append("residus_apres_verification")
-    report["tours_verification"] = rounds_done
-
-    if unresolved:
-        report["entites_non_localisees"] = len(unresolved)
-        if settings.quarantine_on_unlocated:
-            reasons.append("entites_non_localisees")
-
-    report["entites_par_type"] = dict(Counter(s.type for s in spans))
-    report["entites_par_source"] = dict(Counter(s.source for s in spans))
-    records = _mapping_records(spans, content, services, catalog)
-    report["jetons_distincts"] = len(records)
-    text = render_text(content, pseudonymise_document(content, spans))
-
-    # 5. Classification du type de document (sur le texte pseudonymisé) ----------------------
-    classification = _classify(text, settings, services)
-    report["classification"] = classification.to_dict()
-
-    # 6. Valeurs fictives (mode substitution) : les jetons ont servi à la vérification et à la
-    #    classification ; seul le document publié reçoit des valeurs réalistes.
-    report["mode_sortie"] = settings.output_mode
-    if settings.output_mode == "substitution":
-        if services.surrogates is None:
-            raise RuntimeError("Mode substitution sans fabrique de valeurs fictives (services.surrogates)")
-        _assign_surrogates(spans, content, catalog, services.surrogates)
-        text = render_text(content, pseudonymise_document(content, spans))
-    occurrences = _occurrences(spans, content)
-
-    # 7. Rendu --------------------------------------------------------------------------------
-    renderer = source.renderer or render_pdf
-    output = renderer(pdf_bytes, content, spans, settings.ocr_render_dpi)
-    report["duree_secondes"] = round(time.monotonic() - started, 2)
-
-    status = "quarantine" if reasons else "ok"
-    report["statut"] = status
-    report["motifs"] = reasons
-    return PipelineResult(
-        status=status,
-        reasons=reasons,
-        output=output,
-        text=text,
-        records=records,
-        report=report,
-        classification=classification,
-        occurrences=occurrences,
-    )
+    return content
 
 
 _CIVILITY_RE = re.compile(r"\b(?:M\.|Mr\b|Monsieur\b|Mme\b|Mlle\b|Madame\b|Mademoiselle\b)", re.IGNORECASE)
@@ -332,6 +375,8 @@ def _assign_surrogates(
             normalize=lambda v, strat=strat: normalize(strat, v),
             gender_hint=_gender_hint(content.line(s.line_id), s),
         )
+        if strat == "email" and catalog is not None:
+            s.surrogate = catalog.exceptions.with_listed_domain(text, s.surrogate)
 
 
 def _occurrences(spans: list[Span], content: DocumentContent) -> list[dict]:
@@ -354,6 +399,7 @@ def _occurrences(spans: list[Span], content: DocumentContent) -> list[dict]:
                 "page": line.page + 1,
                 "ligne": s.line_id,
                 "position": [round(v, 2) for v in (x0, y0, x1, y1)],
+                "caracteres": [s.start, s.end],
                 "quadrilateres": [[round(v, 2) for v in w.quad] for w in words if w.quad] or None,
             }
         )
@@ -367,7 +413,7 @@ def _rejected(reason: str, report: dict, settings: Settings) -> PipelineResult:
     return PipelineResult(status="quarantine", reasons=[reason], report=report, classification=classification)
 
 
-def _classify(text: str, settings: Settings, services: Services) -> Classification:
+def classify_text(text: str, settings: Settings, services: Services) -> Classification:
     """Classe le texte pseudonymisé ; une erreur de l'agent range le document en « non classé ».
 
     Un référentiel invalide lève l'erreur, pour que le message soit réessayé.

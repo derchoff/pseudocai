@@ -27,6 +27,7 @@ resource "azurerm_servicebus_namespace" "main" {
 #   incoming-events : événements BlobCreated de incoming/  -> routeur
 #   pdf-jobs       : jobs de pseudonymisation (PDF, ou image préparée)
 #   image-jobs     : jobs de préparation d'image (créée même si les images sont désactivées : vide)
+#   mail-jobs      : mails .eml à découper (créée même si les mails sont désactivés : vide)
 resource "azurerm_servicebus_queue" "incoming_events" {
   name                                 = "incoming-events"
   namespace_id                         = azurerm_servicebus_namespace.main.id
@@ -38,6 +39,15 @@ resource "azurerm_servicebus_queue" "incoming_events" {
 
 resource "azurerm_servicebus_queue" "pdf_jobs" {
   name                                 = "pdf-jobs"
+  namespace_id                         = azurerm_servicebus_namespace.main.id
+  lock_duration                        = "PT5M"
+  max_delivery_count                   = var.servicebus_max_delivery_count
+  default_message_ttl                  = "P7D"
+  dead_lettering_on_message_expiration = true
+}
+
+resource "azurerm_servicebus_queue" "mail_jobs" {
+  name                                 = "mail-jobs"
   namespace_id                         = azurerm_servicebus_namespace.main.id
   lock_duration                        = "PT5M"
   max_delivery_count                   = var.servicebus_max_delivery_count
@@ -57,7 +67,11 @@ resource "azurerm_servicebus_queue" "image_jobs" {
 locals {
   # Extensions transmises par Event Grid (comparaison insensible à la casse : .JPG est accepté).
   # Le routeur vérifie ensuite le format réel du fichier (signature), pas seulement l'extension.
-  accepted_extensions = concat([".pdf"], var.enable_image_processing ? var.image_extensions : [])
+  accepted_extensions = concat(
+    [".pdf"],
+    var.enable_image_processing ? var.image_extensions : [],
+    var.enable_mail_processing ? [".eml"] : [],
+  )
 }
 
 # Topic système du compte d'origine (un seul autorisé par compte Azure) : créé dans le resource
@@ -149,11 +163,13 @@ resource "azurerm_eventgrid_system_topic_event_subscription" "incoming_created" 
 
 # ------------------------------------------------------------------ droits Service Bus
 
-# App principale : reçoit incoming-events et pdf-jobs ; envoie vers pdf-jobs et image-jobs.
+# App principale : reçoit incoming-events, pdf-jobs et mail-jobs ; envoie vers pdf-jobs, image-jobs
+# et mail-jobs.
 resource "azurerm_role_assignment" "func_sb_receiver" {
   for_each = {
     incoming = azurerm_servicebus_queue.incoming_events.id
     pdf      = azurerm_servicebus_queue.pdf_jobs.id
+    mail     = azurerm_servicebus_queue.mail_jobs.id
   }
   scope                = each.value
   role_definition_name = "Azure Service Bus Data Receiver"
@@ -164,6 +180,7 @@ resource "azurerm_role_assignment" "func_sb_sender" {
   for_each = {
     pdf   = azurerm_servicebus_queue.pdf_jobs.id
     image = azurerm_servicebus_queue.image_jobs.id
+    mail  = azurerm_servicebus_queue.mail_jobs.id
   }
   scope                = each.value
   role_definition_name = "Azure Service Bus Data Sender"

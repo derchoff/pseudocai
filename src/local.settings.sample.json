@@ -7,6 +7,7 @@
     "INCOMING_QUEUE_NAME": "incoming-events",
     "PDF_QUEUE_NAME": "pdf-jobs",
     "IMAGE_QUEUE_NAME": "image-jobs",
+    "MAIL_QUEUE_NAME": "mail-jobs",
     "STORAGE_ACCOUNT_URL": "https://<stdata>.blob.core.windows.net",
     "INCOMING_CONTAINER": "incoming",
     "WORK_CONTAINER": "work",
@@ -19,6 +20,7 @@
     "KEY_VAULT_URL": "https://<kv>.vault.azure.net/",
     "COSMOS_ENDPOINT": "https://<cosmos>.documents.azure.com:443/",
     "IMAGE_PROCESSING_ENABLED": "true",
+    "MAIL_PROCESSING_ENABLED": "true",
     "PSEUDO_OUTPUT_MODE": "substitution",
     "HANDWRITING_POLICY": "quarantaine"
   }

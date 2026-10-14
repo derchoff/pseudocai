@@ -2,7 +2,8 @@
 
     PDF                         -> job « pdf-jobs »   (pseudonymisation directe)
     image (si activé)           -> job « image-jobs » (préparation, puis « pdf-jobs »)
-    image (traitement désactivé), format inconnu, fichier trop volumineux
+    mail .eml (si activé)       -> job « mail-jobs »  (découpage, pièces jointes, dossier par mail)
+    image ou mail (traitement désactivé), format inconnu, fichier trop volumineux
                                 -> quarantine/non-classe/
 
 Le format est déduit uniquement de l'extension (voir formats.py) : un fichier dont le contenu ne
@@ -17,28 +18,30 @@ from urllib.parse import urlparse
 
 from .classification import STATUT_NON_APPLICABLE, unclassified
 from .events import parse_blob_event
-from .formats import PDF, extension, format_from_name, is_image
-from .jobs import ORIGIN_IMAGE, ORIGIN_PDF, Job
+from .formats import MAIL, PDF, extension, format_from_name, is_image
+from .jobs import ORIGIN_IMAGE, ORIGIN_MAIL, ORIGIN_PDF, Job
 from .outputs import STAGE_ROUTING, StorageContext, previous_trace, quarantine, source_blob
 
 log = logging.getLogger(__name__)
 
 QUEUE_PDF = "pdf"
 QUEUE_IMAGE = "image"
+QUEUE_MAIL = "mail"
 
 
 @dataclass
 class RouteResult:
     """Résultat du routage : statut, file de destination et job créé."""
     status: str  # "routed" | "quarantine" | "ignored" | "missing"
-    queue: str | None = None  # QUEUE_PDF | QUEUE_IMAGE
+    queue: str | None = None  # QUEUE_PDF | QUEUE_IMAGE | QUEUE_MAIL
     job: Job | None = None
 
 
 def route_event(body: bytes | str, ctx: StorageContext) -> RouteResult:
     """Décide du sort d'un fichier déposé dans incoming/, d'après son extension uniquement.
 
-    PDF -> file pdf-jobs, image -> file image-jobs. Format inconnu, images désactivées ou fichier trop gros -> quarantaine.
+    PDF -> file pdf-jobs, image -> file image-jobs, mail -> file mail-jobs. Format inconnu,
+    images ou mails désactivés, fichier trop gros -> quarantaine.
     """
     settings = ctx.settings
     event = parse_blob_event(body)
@@ -53,7 +56,7 @@ def route_event(body: bytes | str, ctx: StorageContext) -> RouteResult:
     fmt = format_from_name(event.name)
     if is_image(fmt) and extension(event.name) not in settings.image_extensions:
         fmt = None  # extension d'image non retenue dans IMAGE_EXTENSIONS
-    origin = ORIGIN_PDF if fmt == PDF else ORIGIN_IMAGE if is_image(fmt) else None
+    origin = {PDF: ORIGIN_PDF, MAIL: ORIGIN_MAIL}.get(fmt) or (ORIGIN_IMAGE if is_image(fmt) else None)
     job = Job.new(event.url, event.container, event.name, fmt or "inconnu", origin or "inconnu")
 
     reason = None
@@ -61,6 +64,8 @@ def route_event(body: bytes | str, ctx: StorageContext) -> RouteResult:
         reason = "format_non_supporte"
     elif origin == ORIGIN_IMAGE and not settings.image_processing_enabled:
         reason = "traitement_images_desactive"
+    elif origin == ORIGIN_MAIL and not settings.mail_processing_enabled:
+        reason = "traitement_mails_desactive"
     elif blob.get_blob_properties().size > settings.max_file_mb * 1024 * 1024:
         reason = "fichier_trop_volumineux"
     if reason:
@@ -76,7 +81,7 @@ def route_event(body: bytes | str, ctx: StorageContext) -> RouteResult:
         )
         return RouteResult("quarantine", job=job)
 
-    queue = QUEUE_PDF if origin == ORIGIN_PDF else QUEUE_IMAGE
+    queue = {ORIGIN_PDF: QUEUE_PDF, ORIGIN_IMAGE: QUEUE_IMAGE, ORIGIN_MAIL: QUEUE_MAIL}[origin]
     log.info("Document routé doc=%s format=%s file=%s job=%s", job.document_id, fmt, queue, job.job_id)
     return RouteResult("routed", queue=queue, job=job)
 

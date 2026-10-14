@@ -135,6 +135,10 @@ class Settings:
     image_render_dpi: int
     image_output_quality: int
 
+    # Mails (.eml) : corps, en-têtes et pièces jointes pseudonymisés, rangés dans un dossier par mail
+    mail_processing_enabled: bool
+    mail_max_attachments: int
+
     @classmethod
     def from_env(cls) -> "Settings":
         """Construit les réglages depuis l'environnement, avec les valeurs par défaut."""
@@ -211,4 +215,6 @@ class Settings:
             image_enhance_for_ocr=_bool("IMAGE_ENHANCE_FOR_OCR", True),
             image_render_dpi=_int("IMAGE_RENDER_DPI", 300),
             image_output_quality=_int("IMAGE_OUTPUT_QUALITY", 90),
+            mail_processing_enabled=_bool("MAIL_PROCESSING_ENABLED", False),
+            mail_max_attachments=_int("MAIL_MAX_ATTACHMENTS", 20),
         )

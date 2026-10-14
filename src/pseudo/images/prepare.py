@@ -19,7 +19,7 @@ from ..config import Settings
 from ..geometry import IDENTITY, PageGeometry, dump_geometry
 from ..image_codec import ImageDecodeError, ImageTooLargeError, decode
 from ..jobs import Job, PreparedImage
-from ..outputs import STAGE_IMAGE, StorageContext, previous_trace, quarantine, source_blob
+from ..outputs import STAGE_IMAGE, StorageContext, job_source_blob, previous_trace, quarantine
 from .preprocess import prepare_ocr_copy
 from .quality import check_quality
 
@@ -83,16 +83,23 @@ def prepare_image(data: bytes, fmt: str, settings: Settings) -> PreparedArtifact
 
 
 def handle_image_job(body: bytes | str, ctx: StorageContext) -> Job | None:
-    """Prépare l'image du job et renvoie le job à transmettre à « pdf-jobs » (None si quarantaine)."""
+    """Prépare l'image du job et renvoie le job à transmettre à « pdf-jobs » (None si quarantaine).
+
+    Pièce jointe d'un mail refusée : le job est transmis quand même, marqué « quarantine », pour que
+    la finalisation du mail (app principale) le sache ; rien n'est écrit en quarantaine ici.
+    """
     settings = ctx.settings
     job = Job.from_json(body)
-    blob = source_blob(ctx, job.source_container, job.source_name)
+    blob = job_source_blob(ctx, job)
     if not blob.exists():
         log.warning("Image introuvable dans incoming/ doc=%s", job.document_id)
         return None
     original = blob.download_blob().readall()
     artifacts = prepare_image(original, job.source_format, settings)
 
+    if artifacts.reasons and job.parent is not None:
+        job.parent.update(status="quarantine", reasons=artifacts.reasons, report={"preparation": artifacts.preparation})
+        return job
     if artifacts.reasons:
         quarantine(
             ctx,

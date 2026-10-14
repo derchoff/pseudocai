@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .catalog import CatalogError, parse_sections, raise_if_errors
+from .exceptions import Exceptions, parse_exceptions
 from .surrogates import GENERATORS
 
 STRATEGIES = ("texte", "chiffres", "alphanumerique", "email", "telephone", "date")
@@ -62,6 +63,8 @@ class FieldDef:
 class FieldCatalog:
     """Référentiel des champs à pseudonymiser (champs-a-pseudonymiser.md)."""
     fields: tuple[FieldDef, ...]
+    # Section « Organisations à ne jamais pseudonymiser » (voir exceptions.py).
+    exceptions: Exceptions = Exceptions()
 
     @property
     def types(self) -> tuple[str, ...]:
@@ -119,4 +122,8 @@ def parse_fields(markdown: str) -> FieldCatalog:
                 )
         fields.append(FieldDef(section.type, section.label, normalisation, substitution))
     raise_if_errors(errors, "Référentiel des champs", FieldCatalogError)
-    return FieldCatalog(fields=tuple(fields))
+    try:
+        exceptions = parse_exceptions(markdown)
+    except CatalogError as exc:
+        raise FieldCatalogError(str(exc)) from exc
+    return FieldCatalog(fields=tuple(fields), exceptions=exceptions)

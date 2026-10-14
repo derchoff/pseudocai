@@ -24,6 +24,10 @@ def handle_pdf_job(body: bytes | str, runtime: Runtime) -> str:
     """
     settings = runtime.settings
     job = Job.from_json(body)
+    if job.parent is not None:
+        from .mails.parts import handle_mail_part  # pièce jointe d'un mail : publiée avec le mail
+
+        return handle_mail_part(job, runtime)
     previous = previous_trace(runtime, job)
     if previous and previous.get("jobId") == job.job_id:
         # Message relivré par Service Bus après un traitement déjà terminé.

@@ -18,6 +18,7 @@ TIFF = "tiff"
 WEBP = "webp"
 BMP = "bmp"
 HEIF = "heif"
+MAIL = "eml"
 
 IMAGE_FORMATS = (JPEG, PNG, TIFF, WEBP, BMP, HEIF)
 
@@ -32,6 +33,7 @@ EXTENSIONS = {
     ".bmp": BMP,
     ".heic": HEIF,
     ".heif": HEIF,
+    ".eml": MAIL,
 }
 
 CONTENT_TYPES = {
@@ -42,6 +44,19 @@ CONTENT_TYPES = {
     WEBP: "image/webp",
     BMP: "image/bmp",
     HEIF: "image/heif",
+    MAIL: "message/rfc822",
+}
+
+# Type MIME d'une pièce jointe sans nom de fichier (image intégrée au corps d'un mail) -> extension.
+EXTENSION_FOR_CONTENT_TYPE = {
+    "application/pdf": ".pdf",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/tiff": ".tif",
+    "image/webp": ".webp",
+    "image/bmp": ".bmp",
+    "image/heic": ".heic",
+    "image/heif": ".heif",
 }
 
 

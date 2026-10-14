@@ -93,7 +93,7 @@ Les exemples ci-dessous correspondent à `project = "pseudo"`, `environment = "d
 | Groupe de ressources | `rg-pseudo-dev` | `main.tf` | Contient toutes les ressources du service. Créé par Terraform, sauf avec `create_resource_group = false`. |
 | Compte de stockage | `stpseudodevmdg6data` | `storage.tf` | Données : containers `incoming` (dépôt, sauf storage d'origine existant), `work` (intermédiaires des images), `pseudonymised`, `quarantine` (sorties) et `config` (prompts, versionnés). Règles de purge automatique. |
 | Compte de stockage | `stpseudodevmdg6func` | `storage.tf` | Stockage interne des Function Apps : runtime et paquets de déploiement (`deployments`, `deployments-images`). |
-| Espace de noms Service Bus | `sb-pseudo-dev-mdg6` | `messaging.tf` | Files `incoming-events`, `pdf-jobs` et `image-jobs`, chacune avec sa dead-letter. Ce sont les liens entre les étapes. |
+| Espace de noms Service Bus | `sb-pseudo-dev-mdg6` | `messaging.tf` | Files `incoming-events`, `pdf-jobs`, `image-jobs` et `mail-jobs`, chacune avec sa dead-letter. Ce sont les liens entre les étapes. |
 | Rubrique système Event Grid | `egst-pseudo-dev-data` | `messaging.tf` | Émet les événements « blob créé » du **storage d'origine** (le compte de données par défaut). L'abonnement `incoming-created-to-servicebus` les filtre (container d'entrée, extensions acceptées) et les envoie vers `incoming-events`. Avec un storage d'origine existant, elle est créée dans **son** resource group (`egst-pseudo-dev-source`), sauf si une rubrique existe déjà. |
 | Plan App Service (Flex Consumption) | `asp-pseudo-dev` | `function.tf` (module `flex_function`) | Plan de l'app principale (un plan par app Flex). |
 | Application de fonction | `func-pseudo-dev-mdg6` | `function.tf` (module `flex_function`) | **App principale** : étape ① routage (`route_incoming`) et étape ③ pseudonymisation (`pseudonymise_job`). |
@@ -168,6 +168,7 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 | `allowed_ip_ranges` | `[]` | IP du poste ou du runner CI, autorisées quand l'accès public est fermé. |
 | `function_max_instances` | `10` | App principale : limite la parallélisation, et donc la charge sur Azure OpenAI. |
 | `function_instance_memory_mb` | `2048` | App principale : les gros PDF scannés demandent de la mémoire (rastérisation). |
+| `enable_mail_processing` | `false` | Active les mails `.eml` : un dossier pseudonymisé par mail (voir [architecture](architecture.md#mails-eml)). Les pièces jointes images demandent aussi `enable_image_processing`. |
 | `enable_image_processing` | `false` | Active le traitement des images (voir [Activer les images](#activer-le-traitement-des-images)). |
 | `image_extensions` | `.jpg .jpeg .png .heic .heif .tif .tiff .webp .bmp` | Extensions d'images acceptées (filtre Event Grid et routeur). Le format est déduit de l'extension ; un contenu non conforme part en quarantaine. |
 | `image_function_max_instances` | `5` | App images : parallélisation de la préparation. |
@@ -183,7 +184,7 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 
 **Non variabilisé volontairement** :
 - Noms des containers de sortie (`work`, `pseudonymised`, `quarantine`, `config`) et des files
-  (`incoming-events`, `pdf-jobs`, `image-jobs`) : ce sont des contrats entre le code et
+  (`incoming-events`, `pdf-jobs`, `image-jobs`, `mail-jobs`) : ce sont des contrats entre le code et
   l'infrastructure.
 - Format de sortie des images : toujours le **format d'origine** (choix fonctionnel).
 - SKU du stockage (ZRS) et désactivation des clés d'accès : ce sont des exigences de sécurité.
@@ -208,6 +209,7 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 | `QUARANTINE_ON_UNLOCATED` | true | Quarantaine si une entité signalée par un agent est introuvable dans le texte. |
 | `LANGUAGE_PII_CATEGORIES` | `Person:PERSONNE,...` | Correspondance entre les catégories Azure AI Language et les types internes. |
 | `PROMPT_CACHE_SECONDS` | 300 | Délai de rechargement des prompts. |
+| `MAIL_MAX_ATTACHMENTS` | 20 | Au-delà, le mail entier part en quarantaine (`trop_de_pieces_jointes`). |
 | `PSEUDO_OUTPUT_MODE` | substitution | Posé par la variable `pseudo_output_mode` (ne pas le passer dans `pipeline_settings`). |
 | `HANDWRITING_POLICY` | quarantaine | Posé par la variable `handwriting_policy` (ne pas le passer dans `pipeline_settings`). |
 | `HANDWRITING_MIN_CONFIDENCE` | 0.5 | Confiance minimale de Document Intelligence pour considérer un passage comme manuscrit. |
@@ -407,3 +409,12 @@ déplace quelques ressources dans l'état Terraform, sans les recréer :
 Passer ensuite à un storage d'origine existant supprime le container `incoming` du compte de
 données et sa règle de purge, puis recrée la rubrique Event Grid sur le nouveau compte : vider
 `incoming` avant d'appliquer.
+
+## Mise à jour : mails .eml et organisations conservées
+
+| Changement | Effet |
+|---|---|
+| Nouvelle file Service Bus `mail-jobs` | Créée par Terraform, avec les droits de l'app principale. |
+| Nouvelle variable `enable_mail_processing` (`false` par défaut) | À `true` : `.eml` ajouté au filtre Event Grid, réglage `MAIL_PROCESSING_ENABLED` sur les apps. |
+| Nouvelle Function `split_mail` dans l'app principale | Publiée par `deploy.ps1`. |
+| Section « Organisations à ne jamais pseudonymiser » dans `champs-a-pseudonymiser.md` | À publier avec `publish-prompts.ps1` (fait par `deploy.ps1`). Elle s'applique aussi aux PDF et aux images. |

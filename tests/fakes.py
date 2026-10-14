@@ -6,10 +6,10 @@ import json
 from types import SimpleNamespace
 from urllib.parse import urlparse
 
-from azure.core.exceptions import ResourceNotFoundError
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 
 from pseudo.handler import handle_pdf_job
-from pseudo.router import QUEUE_IMAGE, QUEUE_PDF, route_event
+from pseudo.router import QUEUE_IMAGE, QUEUE_MAIL, QUEUE_PDF, route_event
 from pseudo.runtime import Runtime
 
 
@@ -50,13 +50,20 @@ class FakeBlobService:
         )
 
     def get_container_client(self, container):
-        """Client d'un container : upload_blob et get_blob_client."""
+        """Client d'un container : upload_blob, list_blobs et get_blob_client."""
         def upload_blob(name, data, overwrite=False, content_settings=None, metadata=None):
-            """Écrit (ou remplace) un blob avec ses métadonnées."""
+            """Écrit un blob avec ses métadonnées ; sans overwrite, refuse s'il existe déjà."""
+            if not overwrite and (container, name) in self.blobs:
+                raise ResourceExistsError("existe")
             self.blobs[(container, name)] = {"data": data, "metadata": metadata or {}}
+
+        def list_blobs(name_starts_with=""):
+            """Blobs du container dont le nom commence par le préfixe."""
+            return [SimpleNamespace(name=n) for c, n in list(self.blobs) if c == container and n.startswith(name_starts_with)]
 
         return SimpleNamespace(
             upload_blob=upload_blob,
+            list_blobs=list_blobs,
             get_blob_client=lambda name: self.get_blob_client(container, name),
         )
 
@@ -111,6 +118,8 @@ def run_chain(runtime: Runtime, name: str, prepare_image=None) -> tuple[str, lis
         return route.status, messages
     job_json = route.job.to_json()
     messages.append(job_json)
+    if route.queue == QUEUE_MAIL:
+        return _run_mail(runtime, job_json, prepare_image, messages)
     if route.queue == QUEUE_IMAGE:
         job = prepare_image(job_json, runtime)
         if job is None:
@@ -119,3 +128,16 @@ def run_chain(runtime: Runtime, name: str, prepare_image=None) -> tuple[str, lis
         messages.append(job_json)
     assert route.queue in (QUEUE_PDF, QUEUE_IMAGE)
     return handle_pdf_job(job_json, runtime), messages
+
+
+def _run_mail(runtime: Runtime, job_json: str, prepare_image, messages: list[str]) -> tuple[str, list[str]]:
+    """Mail : découpage, puis chaque pièce jointe (préparation si image) ; statut = trace du mail."""
+    from pseudo.mails.split import handle_mail_job
+
+    for queue, child in handle_mail_job(job_json, runtime):
+        messages.append(child)
+        if queue == QUEUE_IMAGE:
+            child = prepare_image(child, runtime).to_json()
+            messages.append(child)
+        handle_pdf_job(child, runtime)
+    return runtime.mapping_store.traces[-1]["status"], messages

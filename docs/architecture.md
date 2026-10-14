@@ -33,6 +33,7 @@ flowchart LR
     QL --> R
     R -- PDF --> QP[[pdf-jobs]]
     R -- image --> QI[[image-jobs]]
+    R -- mail .eml --> QMAIL[[mail-jobs<br/>voir « Mails »]]
     R -- "format inconnu,<br/>images désactivées,<br/>trop volumineux" --> Q
     QI --> I
     I -- "render.pdf, ocr.pdf,<br/>transforms.json" --> W
@@ -66,6 +67,7 @@ Cosmos DB et les services IA.
 |---|---|---|---|
 | ① Routage | principale (`functions_main.py`) | `incoming-events` (Event Grid) | Déduit le format **uniquement de l'extension** et envoie un job vers `pdf-jobs` ou `image-jobs`. Les extensions non prises en charge, les images quand leur traitement est désactivé et les fichiers trop volumineux vont en `quarantine/non-classe/`. |
 | ② Préparation des images | images (`functions_images.py`) | `image-jobs` | Décode l'image, la contrôle, prépare une copie redressée pour l'OCR et l'emballe en PDF dans `work/<job>/`. Transmet ensuite le job à `pdf-jobs`. |
+| ①bis Découpage des mails | principale (`functions_main.py`, `split_mail`) | `mail-jobs` | Découpe un `.eml` : en-têtes, objet et corps pseudonymisés, une tâche par pièce jointe ; voir [Mails](#mails-eml). |
 | ③ Pseudonymisation | principale (`functions_main.py`) | `pdf-jobs` | Traite un PDF d'origine ou une image préparée : OCR, agents IA, jetons, classification et caviardage. La sortie est produite au **format d'origine**. |
 
 Le storage où arrivent les documents est par défaut le compte de données du service. Il peut
@@ -262,6 +264,80 @@ masqué, et un nom mal lu reçoit un jeton différent d'un document à l'autre. 
 Dans les deux cas, le rapport et la trace contiennent `mots_manuscrits`, `pages_manuscrites` et
 `politique_manuscrit`. Une signature lisible comme texte suffit à déclencher la quarantaine :
 c'est voulu.
+
+## Mails (.eml)
+
+Activés par la variable Terraform `enable_mail_processing`. Un mail produit **un dossier**, au nom
+unique et sans donnée personnelle, rangé comme les autres documents par type :
+
+```
+pseudonymised/<type>/mail-<date>-<empreinte>/
+├── mail.json        expéditeur, destinataires, date, objet : pseudonymisés
+├── body.html        corps pseudonymisé (body.txt si le mail n'a pas de version HTML)
+├── <pièces jointes> pseudonymisées, nom de fichier compris (facture_DUPONT.pdf -> facture_MEYER.pdf)
+└── rapport.json     classement, rapport du corps et de chaque pièce
+quarantine/<type>/mail-<date>-<empreinte>/
+├── <mail d'origine>.eml
+└── motif.json
+```
+
+L'empreinte est calculée avec la clé HMAC à partir du `Message-ID` : un même mail retraité
+retombe dans le même dossier, qui est remplacé. Un mail sans pièce jointe donne un dossier avec
+`mail.json`, `body.*` et `rapport.json`.
+
+```mermaid
+flowchart LR
+    IN[incoming/ *.eml] --> R[route_incoming]
+    R --> QM[[mail-jobs]]
+    QM --> S[split_mail<br/>lecture du .eml]
+    S -- "pièce non prise en charge,<br/>trop de pièces" --> QQ[[quarantine/non-classe/mail-…/]]
+    S --> T[En-têtes + objet + noms des pièces<br/>+ corps : UN passage dans le pipeline]
+    S -- "une tâche par pièce" --> QP[[pdf-jobs / image-jobs]]
+    QP --> PJ[Pièce pseudonymisée<br/>résultat dans work/]
+    T --> W[(work/mails/&lt;job&gt;/)]
+    PJ --> W
+    W -- "dernière pièce terminée" --> F[Finalisation :<br/>classement de l'ensemble]
+    F -- "tout est ok" --> OUT[[pseudonymised/&lt;type&gt;/mail-…/]]
+    F -- "une partie en doute" --> Q2[[quarantine/&lt;type&gt;/mail-…/]]
+```
+
+| Étape | Où | Ce qui se passe |
+|---|---|---|
+| Découpage | `split_mail` (app principale), [mails/split.py](../src/pseudo/mails/split.py) | Lecture du `.eml` avec la bibliothèque standard `email`. Les images **intégrées au corps** trop petites pour être lues (logos, icônes de signature) sont **retirées** du résultat. Une pièce non prise en charge (Word, Excel, ZIP, mail joint…), une image alors que les images sont désactivées ou plus de `MAIL_MAX_ATTACHMENTS` pièces : le **mail entier** part en quarantaine, sans appel aux agents IA. |
+| Texte du mail | [mails/document.py](../src/pseudo/mails/document.py) | En-têtes (`De`, `À`, `Cc`, `Répondre à`), objet, noms des pièces jointes et corps forment **un seul texte**, pseudonymisé en un passage : une même personne reçoit la même valeur fictive partout. |
+| Corps HTML | [mails/html_body.py](../src/pseudo/mails/html_body.py) | Seuls les textes changent, la mise en forme est conservée. Les attributs `title`, `alt`, `aria-label` et les liens (`mailto:`, adresses web) sont aussi analysés. **Retirés** : scripts, `onclick`…, commentaires, liens `javascript:`, images distantes (suivi d'ouverture) ou en `data:`. Une image intégrée pointe vers son fichier pseudonymisé du dossier. |
+| Pièces jointes | `pseudonymise_job`, [mails/parts.py](../src/pseudo/mails/parts.py) | Traitées comme des documents normaux (préparation pour une image), sans classement individuel. Le résultat va dans `work/mails/<job>/`, pas dans `pseudonymised/`. |
+| Finalisation | [mails/finalize.py](../src/pseudo/mails/finalize.py) | Déclenchée par la dernière pièce terminée (chacune écrit son marqueur, puis regarde ; un verrou garantit une seule publication). Classement sur le texte de l'ensemble, puis **tout ou rien** : une seule partie en doute (manuscrit, image floue, résidus…) et le mail entier part en quarantaine. `work/` est purgé. |
+
+**Ré-identification** : comme pour un document, chaque zone remplacée est enregistrée dans Cosmos
+DB `occurrences`, avec pour `document` le chemin publié du fichier (`mail.json` pour les
+en-têtes, `body.html|txt` pour le corps, la pièce pour une pièce jointe).
+
+## Organisations à ne jamais pseudonymiser
+
+Une section du référentiel des champs, [champs-a-pseudonymiser.md](../prompts/champs-a-pseudonymiser.md),
+liste les partenaires dont le nom et le domaine e-mail sont conservés :
+
+```markdown
+## Organisations à ne jamais pseudonymiser
+- **Noms** : SG Santé, SGSanté, Howden, Howden France, Ageo
+- **Domaines** : ageo.fr, sgsante.fr, howden-france.com, howdengroup.com
+- **Adresses génériques** : contact, info, gestion, sinistres, …
+```
+
+Elle est envoyée aux agents IA avec le reste du référentiel, **et** appliquée par le code
+([exceptions.py](../src/pseudo/exceptions.py)) après **toutes** les détections (agent IA, règles,
+Azure AI Language), dans tous les documents et dans les en-têtes des mails :
+
+| Valeur | Résultat |
+|---|---|
+| Nom d'une organisation de la liste (`SG Santé`) | Conservé. |
+| Adresse générique d'un domaine de la liste (`contact@sgsante.fr`, `no-reply@howdengroup.com`) | Conservée : tous les mots avant `@` sont dans la liste des adresses génériques. |
+| Adresse nominative d'un domaine de la liste (`marie.durand@sgsante.fr`) | Pseudonymisée **en gardant le domaine** (`aurelie.vincent@sgsante.fr`) ; le nom de la personne aussi. |
+| Toute autre adresse | Pseudonymisée en `@example.com`. |
+
+Une adresse e-mail est toujours remplacée d'un seul tenant : un nom retrouvé à l'intérieur
+(« durand » dans `marie.durand@…`) ne la découpe plus en morceaux.
 
 ## Valeurs fictives (mode substitution)
 

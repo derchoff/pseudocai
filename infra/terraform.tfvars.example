@@ -32,15 +32,18 @@ enable_language_pii       = true
 enable_private_networking = false
 allowed_ip_ranges         = [] # ex. ["203.0.113.10"] : IP du poste/runner de déploiement
 
-function_max_instances      = 10
+function_max_instances      = 2
 function_instance_memory_mb = 2048
 delete_source_after_success = false
 incoming_retention_days      = 7
 work_retention_days         = 1
 quarantine_retention_days   = 30
 
+# Mails .eml : un dossier pseudonymisé par mail (corps, en-têtes, pièces jointes)
+enable_mail_processing = true
+
 # Images (photos, scans) : crée l'app images et ajoute les extensions au filtre Event Grid
-enable_image_processing      = false
+enable_image_processing      = true
 image_function_max_instances = 5
 image_function_memory_mb     = 4096
 # image_extensions = [".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff", ".webp", ".bmp"]
@@ -52,6 +55,8 @@ pipeline_settings = {
   MAX_PAGES           = "200"
   VERIFICATION_ROUNDS = "2"
   OCR_MIN_CONFIDENCE  = "0.75"
+  IMAGE_MIN_SHORT_SIDE = "900"
+  IMAGE_RENDER_DPI = "200"
 }
 
 tags = {

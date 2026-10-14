@@ -56,6 +56,14 @@ class SimpleStorageContext:
     source_blob_service: object | None = None
 
 
+def job_source_blob(ctx: StorageContext, job: Job):
+    """Client du fichier à traiter : pièce jointe d'un mail dans work/ (compte « data »), sinon le
+    document déposé dans le compte d'origine."""
+    if job.source_container == ctx.settings.work_container:
+        return ctx.blob_service.get_blob_client(job.source_container, job.source_name)
+    return source_blob(ctx, job.source_container, job.source_name)
+
+
 def source_blob(ctx: StorageContext, container: str, name: str):
     """Client du document déposé, dans le compte d'origine (le compte « data » par défaut)."""
     service = getattr(ctx, "source_blob_service", None) or ctx.blob_service

@@ -237,6 +237,12 @@ variable "quarantine_retention_days" {
 
 # ---------------------------------------------------------------------------- Images
 
+variable "enable_mail_processing" {
+  description = "Active le traitement des mails .eml (corps, en-têtes et pièces jointes pseudonymisés, un dossier par mail) : filtre Event Grid, fonction split_mail. Les pièces jointes images demandent aussi enable_image_processing."
+  type        = bool
+  default     = false
+}
+
 variable "enable_image_processing" {
   description = "Active le traitement des images (photos, scans JPEG/PNG/HEIC/TIFF...) : app images, filtre Event Grid."
   type        = bool

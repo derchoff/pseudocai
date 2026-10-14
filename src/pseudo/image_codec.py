@@ -48,6 +48,15 @@ def _pil():
     return Image
 
 
+def image_size(data: bytes, fmt: str) -> tuple[int, int] | None:
+    """Dimensions (largeur, hauteur) lues dans l'en-tête de l'image, sans la décoder ; None si illisible."""
+    try:
+        with _pil().open(io.BytesIO(data), formats=[_PIL_FORMATS[fmt]]) as img:
+            return img.size
+    except Exception:  # noqa: BLE001 - illisible : la préparation de l'image le signalera
+        return None
+
+
 def decode(data: bytes, fmt: str, max_pixels: int) -> DecodedImage:
     """Décode une image en n'acceptant que le format annoncé par son extension.
 

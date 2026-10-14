@@ -18,8 +18,8 @@ def registered(monkeypatch, role):
 
 
 def test_main_role_is_the_default(monkeypatch):
-    assert registered(monkeypatch, None) == ["pseudonymise_job", "route_incoming"]
-    assert registered(monkeypatch, "main") == ["pseudonymise_job", "route_incoming"]
+    assert registered(monkeypatch, None) == ["pseudonymise_job", "route_incoming", "split_mail"]
+    assert registered(monkeypatch, "main") == ["pseudonymise_job", "route_incoming", "split_mail"]
 
 
 def test_images_role_registers_only_image_preparation(monkeypatch):

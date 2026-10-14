@@ -210,6 +210,31 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
 
 ---
 
+## Organisations à ne jamais pseudonymiser
+
+<!--
+  NOTE POUR LES MAINTENEURS : cette section est AUSSI lue par le code (pseudo/exceptions.py), qui
+  l'applique après toutes les détections (agent IA, règles, Azure AI Language), dans tous les
+  documents et dans les en-têtes des mails. Garder les trois puces et leur nom exact ; valeurs
+  séparées par des virgules. Le titre n'a pas de tiret cadratin : ce n'est pas un champ.
+-->
+
+- **Noms** : SG Santé, SGSanté, Howden, Howden France, Ageo
+- **Domaines** : ageo.fr, sgsante.fr, howden-france.com, howdengroup.com
+- **Adresses génériques** : contact, info, infos, accueil, service, services, client, clients,
+  gestion, sinistre, sinistres, prestation, prestations, adhesion, adhesions, devis, facture,
+  factures, facturation, comptabilite, courrier, secretariat, support, noreply, no, reply, ne, pas,
+  repondre, sante, relation, relations
+
+Ces organisations sont nos partenaires : leur nom n'est pas une donnée personnelle et ne doit pas
+être signalé. Pour une adresse e-mail d'un de ces domaines :
+- adresse **générique** d'un service (`contact@sgsante.fr`, `sinistres@howden-france.com`) : ne
+  pas la signaler ;
+- adresse **nominative** d'un salarié (`marie.durand@sgsante.fr`) : la signaler comme EMAIL, et
+  signaler aussi son nom et son prénom s'ils apparaissent (c'est une personne physique).
+
+---
+
 ## Règles transverses
 
 1. Une valeur citée plusieurs fois doit être signalée **à chaque occurrence**.

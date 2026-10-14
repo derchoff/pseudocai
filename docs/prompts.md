@@ -59,6 +59,14 @@ p1-l3: Né le 12/03/1985 - N° SS : 1 85 03 75 123 456 78
   type ni en omettre un déclaré. Le type `PERSONNE` est réservé au filet Azure AI Language
   (nom complet non découpé).
 
+## Organisations à ne jamais pseudonymiser
+
+La section du même nom, dans `champs-a-pseudonymiser.md`, liste les partenaires (noms, domaines
+e-mail, mots des adresses génériques). L'agent IA la lit avec le reste du référentiel, et le
+code l'applique après toutes les détections. Ajouter un partenaire = compléter les trois puces,
+puis publier. Le comportement détaillé est décrit dans
+[architecture](architecture.md#organisations-à-ne-jamais-pseudonymiser).
+
 ## Modifier les règles
 
 Chaque champ du référentiel peut indiquer le **générateur de sa valeur fictive**, utilisé en mode

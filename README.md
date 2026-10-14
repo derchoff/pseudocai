@@ -42,6 +42,9 @@ incoming/ ─► Event Grid ─► [incoming-events] ─► ① Routage (Functio
 
   La sortie garde le **format et le cadrage d'origine**, sans métadonnées EXIF. Le traitement
   des images s'active par Terraform (`enable_image_processing`).
+- **Un mail `.eml`** (option `enable_mail_processing`) donne un dossier par mail : en-têtes,
+  corps (HTML ou texte) et pièces jointes pseudonymisés, rapport. Les organisations partenaires
+  listées dans le référentiel (noms, domaines e-mail) ne sont pas pseudonymisées.
 - **Chaque document est classé par type** (dentaire, optique, kinésithérapie, psychologie, carte grise…) et
   rangé dans le sous-dossier correspondant, y compris en quarantaine. Les types se déclarent
   dans [prompts/types-documents.md](prompts/types-documents.md), sans redéploiement.

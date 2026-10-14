@@ -137,7 +137,11 @@ def propagate(spans: list[Span], doc: DocumentContent, min_length: int) -> list[
 
 
 def merge_spans(spans: list[Span], doc: DocumentContent) -> list[Span]:
-    """Supprime les chevauchements : la source la plus fiable gagne, les autres sont rognées."""
+    """Supprime les chevauchements : la source la plus fiable gagne, les autres sont rognées.
+
+    Exception : une adresse e-mail passe en premier, d'un seul tenant. Sinon un nom retrouvé à
+    l'intérieur (« durand » dans marie.durand@…) la découperait en morceaux remplacés séparément.
+    """
     by_line: dict[str, list[Span]] = defaultdict(list)
     for s in spans:
         if doc.line(s.line_id) is not None:
@@ -146,7 +150,7 @@ def merge_spans(spans: list[Span], doc: DocumentContent) -> list[Span]:
     for line_id, items in by_line.items():
         text = doc.line(line_id).text
         covered = [False] * len(text)
-        items.sort(key=lambda s: (SOURCE_PRIORITY.get(s.source, 9), -(s.end - s.start), s.start))
+        items.sort(key=lambda s: (s.type != "EMAIL", SOURCE_PRIORITY.get(s.source, 9), -(s.end - s.start), s.start))
         for s in items:
             a, b = max(0, s.start), min(len(text), s.end)
             full = trim(text, a, b)

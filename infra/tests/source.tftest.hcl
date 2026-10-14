@@ -163,3 +163,20 @@ run "topic_existant_et_container_cree" {
     error_message = "L'identité du topic existant peut écrire dans la file Service Bus."
   }
 }
+
+run "mails_actives" {
+  command = plan
+
+  variables {
+    enable_mail_processing = true
+  }
+
+  assert {
+    condition = (
+      contains(local.accepted_extensions, ".eml")
+      && local.common_app_settings.MAIL_PROCESSING_ENABLED == "true"
+      && local.common_app_settings.MAIL_QUEUE_NAME == "mail-jobs"
+    )
+    error_message = "Mails activés : .eml dans le filtre Event Grid, réglages des Functions."
+  }
+}
