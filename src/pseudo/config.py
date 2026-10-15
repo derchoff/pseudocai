@@ -77,6 +77,8 @@ class Settings:
     openai_reasoning_effort: str | None
     openai_temperature: float | None
     openai_max_completion_tokens: int
+    openai_max_concurrent_calls: int  # par instance de Function
+    openai_rate_limit_max_wait: float  # secondes d'attente maximale après des refus 429
     language_endpoint: str | None
     language_pii_categories: str
     language_min_confidence: float
@@ -162,6 +164,8 @@ class Settings:
             openai_reasoning_effort=_env("OPENAI_REASONING_EFFORT"),
             openai_temperature=float(temperature) if temperature is not None else None,
             openai_max_completion_tokens=_int("OPENAI_MAX_COMPLETION_TOKENS", 16000),
+            openai_max_concurrent_calls=_int("OPENAI_MAX_CONCURRENT_CALLS", 2),
+            openai_rate_limit_max_wait=_float("OPENAI_RATE_LIMIT_MAX_WAIT_SECONDS", 300),
             language_endpoint=_env("LANGUAGE_ENDPOINT"),
             language_pii_categories=_env(
                 "LANGUAGE_PII_CATEGORIES",

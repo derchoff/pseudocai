@@ -204,6 +204,9 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 | `OCR_RENDER_DPI` | 200 | Résolution des pages scannées en sortie. |
 | `LLM_CHUNK_CHARS` | 12000 | Taille des blocs envoyés aux agents. |
 | `LLM_MIN_CONFIDENCE` | 0.3 | Les entités sous ce seuil sont ignorées. |
+| `OPENAI_MAX_COMPLETION_TOKENS` | 16000 | Jetons maximum par réponse du modèle (raisonnement compris). Azure **réserve** ce maximum, plus le prompt, sur la limite de débit à chaque appel : le baisser laisse passer plus d'appels par minute, sans changer le coût. Trop bas : « Réponse tronquée ». |
+| `OPENAI_MAX_CONCURRENT_CALLS` | 2 | Appels simultanés au modèle **par instance** de Function, toutes files confondues (`pdf-jobs`, `mail-jobs`). Au total : `function_max_instances` × cette valeur. |
+| `OPENAI_RATE_LIMIT_MAX_WAIT_SECONDS` | 300 | Après un refus 429 (débit dépassé), l'appel attend le délai indiqué par Azure et réessaie, jusqu'à ce total d'attente. Au-delà, le traitement échoue et Service Bus le relance. |
 | `VERIFICATION_ROUNDS` | 2 | Nombre de passes de l'agent vérificateur (0 pour le désactiver). |
 | `TOKEN_LENGTH` | 10 | Nombre de caractères hexadécimaux du jeton (40 bits). |
 | `QUARANTINE_ON_UNLOCATED` | true | Quarantaine si une entité signalée par un agent est introuvable dans le texte. |

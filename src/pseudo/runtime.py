@@ -157,7 +157,9 @@ def build_runtime(
         azure_endpoint=settings.openai_endpoint,
         azure_ad_token_provider=get_bearer_token_provider(cred, COGNITIVE_SCOPE),
         api_version=settings.openai_api_version,
-        max_retries=6,
+        # Peu de nouveaux essais côté client : l'attente sur les refus 429 est gérée par
+        # AzureOpenAIJsonAgent, plus longue et partagée entre les traitements de l'instance.
+        max_retries=2,
         timeout=180,
     )
     llm = AzureOpenAIJsonAgent(
@@ -166,6 +168,8 @@ def build_runtime(
         reasoning_effort=settings.openai_reasoning_effort,
         temperature=settings.openai_temperature,
         max_completion_tokens=settings.openai_max_completion_tokens,
+        max_concurrent_calls=settings.openai_max_concurrent_calls,
+        rate_limit_max_wait=settings.openai_rate_limit_max_wait,
     )
     agent_kwargs = dict(
         chunk_chars=settings.llm_chunk_chars,

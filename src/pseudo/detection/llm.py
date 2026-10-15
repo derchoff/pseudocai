@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import random
+import threading
+import time
 from typing import Callable, Iterable
 
 from ..doctypes import UNCLASSIFIED, DocTypeCatalog
@@ -78,13 +81,21 @@ class AzureOpenAIJsonAgent:
         reasoning_effort: str | None = None,
         temperature: float | None = None,
         max_completion_tokens: int = 16000,
+        max_concurrent_calls: int = 2,
+        rate_limit_max_wait: float = 300,
     ):
-        """client : client Azure OpenAI ; deployment : nom du déploiement du modèle."""
+        """client : client Azure OpenAI ; deployment : nom du déploiement du modèle.
+
+        max_concurrent_calls : appels simultanés au modèle depuis cette instance (évite les rafales) ;
+        rate_limit_max_wait : temps maximal, en secondes, passé à attendre après des refus 429.
+        """
         self._client = client
         self._deployment = deployment
         self._reasoning_effort = reasoning_effort
         self._temperature = temperature
         self._max_tokens = max_completion_tokens
+        self._slots = threading.BoundedSemaphore(max(1, max_concurrent_calls))
+        self._max_wait = rate_limit_max_wait
 
     def run(self, system_prompt: str, user_content: str, schema: dict, schema_name: str = "entities") -> dict:
         """Appelle le modèle avec un schéma JSON strict (Structured Outputs) et renvoie la réponse décodée."""
@@ -104,13 +115,54 @@ class AzureOpenAIJsonAgent:
             kwargs["reasoning_effort"] = self._reasoning_effort
         if self._temperature is not None:
             kwargs["temperature"] = self._temperature
-        response = self._client.chat.completions.create(**kwargs)
+        response = self._create(kwargs)
         choice = response.choices[0]
         if getattr(choice.message, "refusal", None):
             raise LlmError("Le modèle a refusé la requête")
         if choice.finish_reason == "length":
             raise LlmError("Réponse tronquée (max_completion_tokens) : réduire LLM_CHUNK_CHARS")
         return json.loads(choice.message.content or "{}")
+
+
+    def _create(self, kwargs: dict):
+        """Appel au modèle, en attendant son tour quand Azure refuse pour dépassement de débit (429).
+
+        Sans cette attente, le refus ferait échouer le traitement : Service Bus le relancerait
+        aussitôt, refaisant tous les appels déjà réussis, jusqu'à la dead-letter.
+        """
+        waited = 0.0
+        attempt = 0
+        while True:
+            try:
+                with self._slots:
+                    return self._client.chat.completions.create(**kwargs)
+            except Exception as exc:  # noqa: BLE001 - seul le 429 est retenu, le reste remonte
+                if getattr(exc, "status_code", None) != 429:
+                    raise
+                wait = _retry_delay(exc, attempt)
+                if waited + wait > self._max_wait:
+                    log.error("Débit Azure OpenAI dépassé depuis plus de %.0f s : abandon", self._max_wait)
+                    raise
+                log.warning("Débit Azure OpenAI dépassé (429) : nouvel essai dans %.1f s", wait)
+                time.sleep(wait)
+                waited += wait
+                attempt += 1
+
+
+def _retry_delay(exc, attempt: int) -> float:
+    """Délai avant un nouvel essai : celui indiqué par Azure (retry-after), sinon croissant ; avec
+    un peu de hasard, pour que les traitements en attente ne repartent pas tous en même temps."""
+    headers = getattr(getattr(exc, "response", None), "headers", None) or {}
+    try:
+        if headers.get("retry-after-ms"):
+            base = float(headers["retry-after-ms"]) / 1000
+        elif headers.get("retry-after"):
+            base = float(headers["retry-after"])
+        else:
+            base = min(60.0, 5.0 * 2 ** attempt)
+    except (TypeError, ValueError):
+        base = min(60.0, 5.0 * 2 ** attempt)
+    return max(1.0, base) + random.uniform(0, 3)
 
 
 def format_lines(lines: Iterable[tuple[str, str]]) -> str:
