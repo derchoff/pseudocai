@@ -57,6 +57,7 @@ pipeline_settings = {
   OCR_MIN_CONFIDENCE  = "0.75"
   IMAGE_MIN_SHORT_SIDE = "900"
   IMAGE_RENDER_DPI = "200"
+  # REPORT_DETAIL  = "standard" # défaut "diagnostic" : rapport détaillé par étape, sans valeurs
 }
 
 tags = {

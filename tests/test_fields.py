@@ -111,6 +111,10 @@ class RecordingLlm:
         self.schemas.append(schema)
         return {"entities": self.entities}
 
+    def run_with_usage(self, system_prompt, user_content, schema, schema_name="entities"):
+        """Comme run, avec une consommation fixée."""
+        return self.run(system_prompt, user_content, schema, schema_name), {"jetons_entree": 10, "duree_s": 0.1}
+
 
 def test_agent_schema_and_filter_follow_the_referential(tmp_path):
     repo = write_prompts(tmp_path, current_champs() + IBAN_SECTION)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -72,23 +73,41 @@ def trim(text: str, a: int, b: int) -> tuple[int, int]:
 
 
 def resolve_entities(
-    entities: list[Entity], doc: DocumentContent, fuzzy_min_score: float
+    entities: list[Entity],
+    doc: DocumentContent,
+    fuzzy_min_score: float,
+    diagnostics: list[dict] | None = None,
 ) -> tuple[list[Span], list[Entity]]:
-    """Transforme les entités texte des agents en zones localisées. Retourne (spans, non_localisées)."""
+    """Transforme les entités texte des agents en zones localisées. Retourne (spans, non_localisées).
+
+    diagnostics : si fourni, reçoit une entrée par entité (type, ligne, méthode), sans la valeur.
+    """
     group_values = _group_values(entities, doc)
     spans: list[Span] = []
     unresolved: list[Entity] = []
     for e in entities:
         value = group_values.get(e.group) if e.group else None
         found: list[tuple[Line, int, int]] = []
+        method = "echec"
         line = doc.line(e.line_id) if e.line_id else None
         if line is not None:
-            occ = find_strict(line.text, e.text) or find_fuzzy(line.text, e.text, fuzzy_min_score)
+            occ, method = _find_in_line(line.text, e.text, fuzzy_min_score)
             found = [(line, a, b) for a, b in occ]
         if not found:
             # Mauvais identifiant de ligne renvoyé par l'agent : recherche dans tout le document.
             for other in doc.lines():
                 found += [(other, a, b) for a, b in find_strict(other.text, e.text)]
+            method = "autre_ligne" if found else "echec"
+        if diagnostics is not None:
+            entry = {"type": e.type, "source": e.source, "ligne": e.line_id or None, "methode": method}
+            if not found:
+                entry.update(explain_unresolved(e, doc))
+            elif method == "approchee":
+                # Une valeur coupée sur deux lignes peut n'être retrouvée qu'en partie dans la ligne
+                # indiquée : la longueur masquée, plus courte, le signale.
+                entry["longueur"] = len(e.text)
+                entry["longueur_masquee"] = sum(b - a for _, a, b in found)
+            diagnostics.append(entry)
         if not found:
             unresolved.append(e)
             continue
@@ -97,6 +116,73 @@ def resolve_entities(
             if a < b:
                 spans.append(Span(ln.id, a, b, e.type, e.source, value=value))
     return spans, unresolved
+
+
+def _find_in_line(text: str, needle: str, fuzzy_min_score: float) -> tuple[list[tuple[int, int]], str]:
+    """Recherche dans la ligne indiquée, avec la méthode qui a réussi (exacte, espaces, approchee)."""
+    occ = [(m.start(), m.end()) for m in re.finditer(re.escape(needle), text, re.IGNORECASE)]
+    if occ:
+        return occ, "exacte"
+    pattern = _flex_pattern(needle)
+    occ = [(m.start(), m.end()) for m in pattern.finditer(text)] if pattern else []
+    if occ:
+        return occ, "espaces"
+    occ = find_fuzzy(text, needle, fuzzy_min_score)
+    return occ, ("approchee" if occ else "echec")
+
+
+# --------------------------------------------------------------------------- diagnostic
+
+_FOLD_TABLE = str.maketrans({"’": "'", "‘": "'", "`": "'", "´": "'", "–": "-", "—": "-", "‑": "-",
+                             "‐": "-", "­": "", "​": "", " ": " ", " ": " "})
+
+
+def fold(text: str) -> str:
+    """Forme de comparaison : sans accents, ligatures, ponctuation ni espaces, en minuscules."""
+    text = unicodedata.normalize("NFKD", text.translate(_FOLD_TABLE))
+    return "".join(c for c in text if c.isalnum()).casefold()
+
+
+def explain_unresolved(e: Entity, doc: DocumentContent) -> dict:
+    """Pourquoi une entité n'a pas été localisée, sans jamais renvoyer sa valeur.
+
+    longueur et mots de la valeur ; meilleur score approché dans la ligne indiquée et dans tout le
+    document ; et si elle aurait été trouvée en joignant deux lignes consécutives, ou en ignorant
+    accents et ponctuation. Ces tests ne masquent rien : ils servent à choisir les correctifs.
+    """
+    lines = doc.lines()
+    needle = e.text
+    folded = fold(needle)
+    index = {ln.id: i for i, ln in enumerate(lines)}
+    i = index.get(e.line_id)
+
+    def score(text: str) -> float:
+        """Score partiel de la valeur dans un texte (0 à 100)."""
+        return fuzz.partial_ratio(needle.lower(), text.lower()) if text else 0.0
+
+    def joined(a: Line, b: Line) -> list[str]:
+        """Deux lignes consécutives mises bout à bout (avec ou sans mot coupé par un tiret)."""
+        first = a.text.rstrip()
+        out = [f"{first} {b.text.lstrip()}"]
+        if first.endswith(("-", "­")):
+            out.append(first[:-1] + b.text.lstrip())
+        return out
+
+    pairs = list(zip(lines, lines[1:]))
+    if i is not None:
+        pairs = [(a, b) for a, b in pairs if index[a.id] in (i - 1, i)]
+    two_lines = any(
+        find_strict(t, needle) or (folded and folded in fold(t)) for a, b in pairs for t in joined(a, b)
+    )
+    return {
+        "ligne_connue": i is not None,
+        "longueur": len(needle),
+        "mots": len(needle.split()),
+        "meilleur_score_ligne": round(score(lines[i].text)) if i is not None else None,
+        "meilleur_score_document": round(max((score(ln.text) for ln in lines), default=0.0)),
+        "trouvee_sur_2_lignes": bool(two_lines),
+        "trouvee_sans_accents_ponctuation": bool(folded) and any(folded in fold(ln.text) for ln in lines),
+    }
 
 
 def _group_values(entities: list[Entity], doc: DocumentContent) -> dict[str, str]:

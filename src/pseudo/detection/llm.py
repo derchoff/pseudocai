@@ -99,6 +99,12 @@ class AzureOpenAIJsonAgent:
 
     def run(self, system_prompt: str, user_content: str, schema: dict, schema_name: str = "entities") -> dict:
         """Appelle le modèle avec un schéma JSON strict (Structured Outputs) et renvoie la réponse décodée."""
+        return self.run_with_usage(system_prompt, user_content, schema, schema_name)[0]
+
+    def run_with_usage(
+        self, system_prompt: str, user_content: str, schema: dict, schema_name: str = "entities"
+    ) -> tuple[dict, dict]:
+        """Comme run, et renvoie aussi la consommation de l'appel (jetons, durée, attente 429)."""
         kwargs: dict = {
             "model": self._deployment,
             "messages": [
@@ -115,13 +121,15 @@ class AzureOpenAIJsonAgent:
             kwargs["reasoning_effort"] = self._reasoning_effort
         if self._temperature is not None:
             kwargs["temperature"] = self._temperature
-        response = self._create(kwargs)
+        started = time.monotonic()
+        response, waited = self._create(kwargs)
+        usage = _usage(response, time.monotonic() - started, waited)
         choice = response.choices[0]
         if getattr(choice.message, "refusal", None):
             raise LlmError("Le modèle a refusé la requête")
         if choice.finish_reason == "length":
             raise LlmError("Réponse tronquée (max_completion_tokens) : réduire LLM_CHUNK_CHARS")
-        return json.loads(choice.message.content or "{}")
+        return json.loads(choice.message.content or "{}"), usage
 
 
     def _create(self, kwargs: dict):
@@ -135,7 +143,7 @@ class AzureOpenAIJsonAgent:
         while True:
             try:
                 with self._slots:
-                    return self._client.chat.completions.create(**kwargs)
+                    return self._client.chat.completions.create(**kwargs), waited
             except Exception as exc:  # noqa: BLE001 - seul le 429 est retenu, le reste remonte
                 if getattr(exc, "status_code", None) != 429:
                     raise
@@ -147,6 +155,25 @@ class AzureOpenAIJsonAgent:
                 time.sleep(wait)
                 waited += wait
                 attempt += 1
+
+
+def _usage(response, seconds: float, waited: float) -> dict:
+    """Consommation d'un appel : jetons d'entrée, de sortie et de raisonnement, durée, attente 429."""
+    u = getattr(response, "usage", None)
+    details = getattr(u, "completion_tokens_details", None)
+    return {
+        "jetons_entree": getattr(u, "prompt_tokens", None) or 0,
+        "jetons_sortie": getattr(u, "completion_tokens", None) or 0,
+        "jetons_raisonnement": getattr(details, "reasoning_tokens", None) or 0,
+        "duree_s": seconds,
+        "attente_debit_s": waited,
+    }
+
+
+def _add_usage(total: dict, usage: dict) -> None:
+    """Ajoute la consommation d'un appel au total."""
+    for key, value in usage.items():
+        total[key] = total.get(key, 0) + value
 
 
 def _retry_delay(exc, attempt: int) -> float:
@@ -210,6 +237,12 @@ class EntityAgent:
         self._overlap = overlap_lines
         self._min_confidence = min_confidence
         self.last_prompt_sha256: str | None = None
+        self._local = threading.local()  # statistiques du dernier appel, propres à chaque traitement
+
+    @property
+    def last_stats(self) -> dict | None:
+        """Statistiques du dernier run de ce thread : appels, entités rendues ou écartées, jetons, durée."""
+        return getattr(self._local, "stats", None)
 
     def run(self, lines: list[tuple[str, str]]) -> list[Entity]:
         """Fait analyser les lignes par blocs et renvoie les entités valides.
@@ -224,9 +257,14 @@ class EntityAgent:
         schema = entities_schema(allowed_types)
         known_ids = {line_id for line_id, _ in lines}
         entities: list[Entity] = []
+        stats: dict = {"appels": 0, "entites_rendues": 0, "ecartees_confiance": 0, "ligne_inconnue": 0}
+        self._local.stats = stats
         for n, chunk in enumerate(chunk_lines(lines, self._chunk_chars, self._overlap)):
-            data = self._llm.run(prompt.text, format_lines(chunk), schema)
+            data, usage = self._llm.run_with_usage(prompt.text, format_lines(chunk), schema)
+            stats["appels"] += 1
+            _add_usage(stats, usage)
             for raw in data.get("entities", []):
+                stats["entites_rendues"] += 1
                 text = (raw.get("text") or "").strip()
                 etype = raw.get("type")
                 if not text:
@@ -237,8 +275,11 @@ class EntityAgent:
                     continue
                 confidence = float(raw.get("confidence", 1.0))
                 if confidence < self._min_confidence:
+                    stats["ecartees_confiance"] += 1
                     continue
                 line_id = raw.get("line_id", "")
+                if line_id not in known_ids:
+                    stats["ligne_inconnue"] += 1
                 group = raw.get("group") or ""
                 entities.append(
                     Entity(
@@ -250,6 +291,8 @@ class EntityAgent:
                         source=self._source,
                     )
                 )
+        for key in ("duree_s", "attente_debit_s"):
+            stats[key] = round(stats.get(key, 0.0), 2)
         log.info("Agent %s : %d entité(s) sur %d ligne(s)", self._source, len(entities), len(lines))
         return entities
 
@@ -270,6 +313,11 @@ class DetectionAgent:
         """Entités trouvées dans les lignes non vides du document."""
         return self._agent.run([(line.id, line.text) for line in lines if line.text.strip()])
 
+    @property
+    def last_stats(self) -> dict | None:
+        """Statistiques du dernier appel (voir EntityAgent.last_stats)."""
+        return self._agent.last_stats
+
 
 class VerificationAgent:
     """Agent de vérification : cherche les données restées en clair dans le texte pseudonymisé."""
@@ -286,6 +334,11 @@ class VerificationAgent:
     def verify(self, pseudonymised_lines: list[tuple[str, str]]) -> list[Entity]:
         """Résidus trouvés dans les lignes pseudonymisées (id, texte) non vides."""
         return self._agent.run([item for item in pseudonymised_lines if item[1].strip()])
+
+    @property
+    def last_stats(self) -> dict | None:
+        """Statistiques du dernier appel (voir EntityAgent.last_stats)."""
+        return self._agent.last_stats
 
 
 class ClassificationAgent:

@@ -34,6 +34,7 @@ def _float(name: str, default: float) -> float:
 
 OUTPUT_MODES = ("substitution", "jetons")
 HANDWRITING_POLICIES = ("quarantaine", "traiter")
+REPORT_DETAILS = ("diagnostic", "standard")
 
 
 def _output_mode() -> str:
@@ -49,6 +50,14 @@ def _handwriting_policy() -> str:
     value = (_env("HANDWRITING_POLICY", "quarantaine") or "").strip().lower()
     if value not in HANDWRITING_POLICIES:
         raise ValueError(f"HANDWRITING_POLICY inconnu : {value!r} (attendu : {', '.join(HANDWRITING_POLICIES)})")
+    return value
+
+
+def _report_detail() -> str:
+    """REPORT_DETAIL validé : « diagnostic » (défaut) ou « standard »."""
+    value = (_env("REPORT_DETAIL", "diagnostic") or "").strip().lower()
+    if value not in REPORT_DETAILS:
+        raise ValueError(f"REPORT_DETAIL inconnu : {value!r} (attendu : {', '.join(REPORT_DETAILS)})")
     return value
 
 
@@ -119,6 +128,9 @@ class Settings:
     # Écriture manuscrite détectée par l'OCR : "quarantaine" (revue humaine) ou "traiter"
     handwriting_policy: str
     handwriting_min_confidence: float
+
+    # Rapport : "diagnostic" (détail de chaque étape, sans valeur) ou "standard" (totaux seulement)
+    report_detail: str
 
     # Classification du type de document
     classification_enabled: bool
@@ -202,6 +214,7 @@ class Settings:
             output_mode=_output_mode(),
             handwriting_policy=_handwriting_policy(),
             handwriting_min_confidence=_float("HANDWRITING_MIN_CONFIDENCE", 0.5),
+            report_detail=_report_detail(),
             classification_enabled=_bool("CLASSIFICATION_ENABLED", True),
             classification_min_confidence=_float("CLASSIFICATION_MIN_CONFIDENCE", 0.6),
             classification_secondary_min_confidence=_float("CLASSIFICATION_SECONDARY_MIN_CONFIDENCE", 0.3),

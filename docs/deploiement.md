@@ -215,6 +215,7 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 | `MAIL_MAX_ATTACHMENTS` | 20 | Au-delà, le mail entier part en quarantaine (`trop_de_pieces_jointes`). |
 | `PSEUDO_OUTPUT_MODE` | substitution | Posé par la variable `pseudo_output_mode` (ne pas le passer dans `pipeline_settings`). |
 | `HANDWRITING_POLICY` | quarantaine | Posé par la variable `handwriting_policy` (ne pas le passer dans `pipeline_settings`). |
+| `REPORT_DETAIL` | diagnostic | `diagnostic` : le rapport et le motif détaillent chaque étape (localisation, tours de vérification, jetons IA, durées), sans aucune valeur d'origine ; `standard` : totaux seulement. Voir [exploitation](exploitation.md#rapport-détaillé-diagnostic). |
 | `HANDWRITING_MIN_CONFIDENCE` | 0.5 | Confiance minimale de Document Intelligence pour considérer un passage comme manuscrit. |
 | `CLASSIFICATION_ENABLED` | true | Classe chaque document par type et range les sorties dans un sous-dossier. Si `false`, les sorties sont écrites à la racine des containers. |
 | `CLASSIFICATION_MIN_CONFIDENCE` | 0.6 | Confiance minimale du type principal. En dessous, le document va dans `non-classe/`. |

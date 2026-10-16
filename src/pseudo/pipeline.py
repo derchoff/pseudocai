@@ -145,11 +145,17 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
     if source.source:
         report["source"] = source.source
     reasons: list[str] = []
+    # Rapport détaillé (REPORT_DETAIL=diagnostic) : ce que chaque étape a fait, jamais les valeurs.
+    diag: dict | None = None
+    if settings.report_detail == "diagnostic":
+        diag = report["diagnostic"] = {"durees_s": {}}
 
     if source.content is not None:
         content = source.content
         lines = content.lines()
         report["lignes"] = len(lines)
+        if diag is not None:
+            diag["extraction"] = _pages_diagnostic(content.pages)
     else:
         extracted = _open_and_extract(source, settings, services, report, reasons)
         if isinstance(extracted, PipelineResult):
@@ -161,35 +167,75 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
     catalog = services.fields() if services.fields else None
     if catalog is not None:
         report["champs"] = list(catalog.types)
+    step = time.monotonic()
     entities = services.detector.detect(lines)
-    spans, unresolved = resolve_entities(entities, content, settings.fuzzy_min_score)
-    spans += detect_regex(lines)
+    llm_seconds = time.monotonic() - step
+    located: list[dict] | None = [] if diag is not None else None
+    spans, unresolved = resolve_entities(entities, content, settings.fuzzy_min_score, located)
+    regex_spans = detect_regex(lines)
+    spans += regex_spans
+    language_spans: list[Span] | None = None
+    language_seconds = 0.0
     if services.language is not None:
-        spans += services.language.detect(lines)
+        language_started = time.monotonic()
+        language_spans = services.language.detect(lines)
+        language_seconds = time.monotonic() - language_started
+        spans += language_spans
+    before_merge = len(spans)
     spans = merge_spans(spans, content)
-    spans = merge_spans(spans + propagate(spans, content, settings.propagation_min_length), content)
+    propagated = propagate(spans, content, settings.propagation_min_length)
+    spans = merge_spans(spans + propagated, content)
     exceptions = catalog.exceptions if catalog is not None else None
+    before_exceptions = len(spans)
     spans = apply_exceptions(spans, content, exceptions)
     _assign_tokens(spans, content, services.pseudonymizer, catalog)
     report["prompt_detection_sha256"] = services.detector.prompt_sha256
+    if diag is not None:
+        diag["detection"] = {
+            "llm": _agent_stats(services.detector, entities, llm_seconds),
+            "regex": len(regex_spans),
+            "language": None if language_spans is None else len(language_spans),
+            "propagation": len(propagated),
+            "zones_avant_fusion": before_merge,
+            "zones_retenues": len(spans),
+            "zones_retirees_exceptions": before_exceptions - len(spans),
+        }
+        diag["localisation"] = _localisation_diagnostic(located)
+        diag["durees_s"]["detection_llm"] = round(llm_seconds, 2)
+        if language_spans is not None:
+            diag["durees_s"]["detection_language"] = round(language_seconds, 2)
+        diag["durees_s"]["detection"] = round(time.monotonic() - step, 2)
 
     # 4. Contrôle qualité par l'agent vérificateur -----------------------------------------
     rounds_done = 0
     still_finding = False
+    step = time.monotonic()
     if services.verifier is not None:
+        rounds: list[dict] = []
         for _ in range(settings.verification_rounds):
             rounds_done += 1
+            round_started = time.monotonic()
             pseudo_lines = pseudonymise_document(content, spans)
             residual_entities = services.verifier.verify([(pl.id, pl.text) for pl in pseudo_lines])
+            verifier_seconds = time.monotonic() - round_started
+            residual_located: list[dict] | None = [] if diag is not None else None
             residual_spans, residual_unresolved = _residuals_to_original(
-                residual_entities, pseudo_lines, content, settings.fuzzy_min_score
+                residual_entities, pseudo_lines, content, settings.fuzzy_min_score, residual_located
             )
             unresolved += residual_unresolved
             before = coverage_signature(spans)
             candidate = merge_spans(spans + residual_spans, content)
             candidate = merge_spans(candidate + propagate(candidate, content, settings.propagation_min_length), content)
             candidate = apply_exceptions(candidate, content, exceptions)
-            still_finding = coverage_signature(candidate) != before
+            after = coverage_signature(candidate)
+            still_finding = after != before
+            if diag is not None:
+                rounds.append(
+                    _round_diagnostic(
+                        rounds_done, services.verifier, residual_entities, residual_located,
+                        before, after, candidate, verifier_seconds,
+                    )
+                )
             if not still_finding:
                 break
             spans = candidate
@@ -197,6 +243,9 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
         report["prompt_verification_sha256"] = services.verifier.prompt_sha256
         if still_finding:
             reasons.append("residus_apres_verification")
+        if diag is not None:
+            diag["verification"] = rounds
+            diag["durees_s"]["verification"] = round(time.monotonic() - step, 2)
     report["tours_verification"] = rounds_done
 
     if unresolved:
@@ -213,11 +262,14 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
     token_text = text
 
     # 5. Classification du type de document (sur le texte pseudonymisé) ----------------------
+    step = time.monotonic()
     if source.classify:
         classification = classify_text(text, settings, services)
     else:
         classification = unclassified(STATUT_NON_APPLICABLE, settings.unclassified_folder)
     report["classification"] = classification.to_dict()
+    if diag is not None and source.classify:
+        diag["durees_s"]["classification"] = round(time.monotonic() - step, 2)
 
     # 6. Valeurs fictives (mode substitution) : les jetons ont servi à la vérification et à la
     #    classification ; seul le document publié reçoit des valeurs réalistes.
@@ -232,8 +284,11 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
     # 7. Rendu (un texte déjà extrait est rendu par l'appelant) -------------------------------
     output = None
     if source.content is None or source.renderer is not None:
+        step = time.monotonic()
         renderer = source.renderer or render_pdf
         output = renderer(source.pdf, content, spans, settings.ocr_render_dpi)
+        if diag is not None:
+            diag["durees_s"]["rendu"] = round(time.monotonic() - step, 2)
     report["duree_secondes"] = round(time.monotonic() - started, 2)
 
     status = "quarantine" if reasons else "ok"
@@ -262,6 +317,7 @@ def _open_and_extract(
     Renvoie un PipelineResult de quarantaine si le document est refusé avant la détection.
     """
     pdf_bytes = source.pdf
+    started = time.monotonic()
     # 1. Ouverture et contrôles préalables -------------------------------------------------
     try:
         doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
@@ -297,6 +353,9 @@ def _open_and_extract(
     doc.close()
     content = DocumentContent(pages=pages)
     lines = content.lines()
+    if "diagnostic" in report:
+        report["diagnostic"]["extraction"] = _pages_diagnostic(pages)
+        report["diagnostic"]["durees_s"]["extraction"] = round(time.monotonic() - started, 2)
     ocr_pages = [p for p in pages if p.source == "ocr"]
     report.update(
         pages=len(pages),
@@ -473,7 +532,11 @@ def _assign_tokens(
 
 
 def _residuals_to_original(
-    entities: list[Entity], pseudo_lines, content: DocumentContent, fuzzy_min_score: float
+    entities: list[Entity],
+    pseudo_lines,
+    content: DocumentContent,
+    fuzzy_min_score: float,
+    diagnostics: list[dict] | None = None,
 ) -> tuple[list[Span], list[Entity]]:
     """Les résidus sont localisés dans le texte pseudonymisé puis ramenés au texte d'origine."""
     by_id = {pl.id: pl for pl in pseudo_lines}
@@ -487,7 +550,7 @@ def _residuals_to_original(
             for page in content.pages
         ]
     )
-    pseudo_spans, unresolved = resolve_entities(entities, pseudo_doc, fuzzy_min_score)
+    pseudo_spans, unresolved = resolve_entities(entities, pseudo_doc, fuzzy_min_score, diagnostics)
     spans = []
     for s in pseudo_spans:
         a, b = by_id[s.line_id].to_original(s.start, s.end)
@@ -512,3 +575,82 @@ def _mapping_records(
             ciphertext=services.cipher.encrypt(s.token, value),
         )
     return list(records.values())
+
+
+# --------------------------------------------------------------------------- rapport « diagnostic »
+# Rien ici ne contient de valeur d'origine : types, identifiants de ligne, nombres, durées.
+
+MAX_DIAGNOSTIC_ITEMS = 200  # au-delà, les listes sont tronquées (le total reste indiqué)
+
+
+def _pages_diagnostic(pages: list[PageContent]) -> list[dict]:
+    """Par page : mode (natif ou OCR), lignes, mots, confiance OCR, mots manuscrits."""
+    out = []
+    for p in pages:
+        entry = {
+            "page": p.index + 1,
+            "source": p.source,
+            "lignes": len(p.lines),
+            "mots": sum(len(ln.words) for ln in p.lines),
+        }
+        if p.source == "native":
+            entry["lignes_texte_images"] = sum(1 for ln in p.lines if ln.source == "ocr")
+        if p.ocr_confidence is not None:
+            entry["confiance_ocr"] = round(p.ocr_confidence, 3)
+        handwritten = sum(1 for ln in p.lines for w in ln.words if w.handwritten)
+        if handwritten:
+            entry["mots_manuscrits"] = handwritten
+        out.append(entry)
+    return out
+
+
+def _agent_stats(agent, entities: list[Entity], seconds: float) -> dict:
+    """Statistiques d'un agent IA (appels, jetons, entités rendues ou écartées), ou à défaut le nombre
+    d'entités et la durée mesurée ici."""
+    stats = getattr(agent, "last_stats", None)
+    if isinstance(stats, dict):
+        return {**stats, "entites_retenues": len(entities)}
+    return {"entites_retenues": len(entities), "duree_s": round(seconds, 2)}
+
+
+def _localisation_diagnostic(located: list[dict]) -> dict:
+    """Méthodes de localisation employées et détail des échecs (sans les valeurs)."""
+    failures = [e for e in located if e["methode"] == "echec"]
+    out: dict = {
+        "methodes": dict(Counter(e["methode"] for e in located)),
+        "echecs": failures[:MAX_DIAGNOSTIC_ITEMS],
+    }
+    if failures:
+        out["echecs_par_type"] = dict(Counter(e["type"] for e in failures))
+    if len(failures) > MAX_DIAGNOSTIC_ITEMS:
+        out["echecs_tronques"] = len(failures) - MAX_DIAGNOSTIC_ITEMS
+    return out
+
+
+def _round_diagnostic(
+    number: int,
+    verifier,
+    residuals: list[Entity],
+    located: list[dict],
+    before: set,
+    after: set,
+    candidate: list[Span],
+    seconds: float,
+) -> dict:
+    """Un tour de vérification : résidus signalés (type, ligne), localisation, ce qui a été ajouté."""
+    added = after - before
+    added_types = Counter(
+        s.type for s in candidate if any((s.line_id, i) in added for i in range(s.start, s.end))
+    )
+    return {
+        "tour": number,
+        "agent": _agent_stats(verifier, residuals, seconds),
+        "residus_signales": len(residuals),
+        "residus": [{"type": e.type, "ligne": e.line_id or None} for e in residuals][:MAX_DIAGNOSTIC_ITEMS],
+        "residus_par_type": dict(Counter(e.type for e in residuals)),
+        "localisation": _localisation_diagnostic(located),
+        "nouveaux_caracteres_masques": len(added),
+        "nouvelles_zones_par_type": dict(added_types),
+        "lignes_completees": sorted({line_id for line_id, _ in added})[:MAX_DIAGNOSTIC_ITEMS],
+        "a_trouve_du_nouveau": after != before,
+    }
