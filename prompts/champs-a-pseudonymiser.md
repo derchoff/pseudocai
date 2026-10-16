@@ -58,8 +58,9 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
   - libellés : `Nom`, `Nom de famille`, `Nom de naissance`, `Nom d'usage`, `Nom marital`,
     `Époux/Épouse`, `né(e)` suivi d'un nom (ex. `Mme Durand née Martin` → 2 noms),
     `Soussigné(e)`, `Signataire` ;
-  - civilités : `M.`, `Mr`, `Mme`, `Mlle`, `Monsieur`, `Madame`, `Dr`, `Docteur`, `Pr`, `Me`
-    (la civilité elle-même n'est **pas** à pseudonymiser) ;
+  - civilités et titres : `M.`, `Mr`, `Mme`, `Mlle`, `Monsieur`, `Madame`, `Dr`, `Docteur`,
+    `Pr`, `Professeur`, `Me`, `Maître`. Ils annoncent un nom mais **ne font jamais partie de la
+    valeur** : `Dr DUPONT` → NOM `DUPONT` seulement ; `Docteur` seul n'est rien à signaler ;
   - écriture en MAJUSCULES à côté d'un prénom en casse normale (`Jean DUPONT`) ;
   - blocs d'adresse de destinataire, signatures en bas de page, champs « Fait par » ;
   - rubrique `C.1` d'une carte grise (titulaire) : nom PUIS prénom, tous deux en MAJUSCULES
@@ -71,7 +72,9 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
 - **Ne pas inclure** : noms de sociétés, d'établissements, de marques, de produits, de
   médicaments ; noms de villes ; noms de voies quand ils font partie d'une adresse (ils
   relèvent alors du type ADRESSE) ; sur une carte grise, marque et modèle du véhicule
-  (rubriques `D.1`, `D.2`, `D.3`, ex. `PEUGEOT`, `308`), même écrits en MAJUSCULES comme un nom.
+  (rubriques `D.1`, `D.2`, `D.3`, ex. `PEUGEOT`, `308`), même écrits en MAJUSCULES comme un nom ;
+  civilités et titres (`Dr`, `Docteur`…) ; mots du vocabulaire du document, même en MAJUSCULES
+  ou en début de ligne (`DEVIS`, `Facture`, voir « Mots à ne jamais pseudonymiser »).
 
 ## PRENOM — Prénom d'une personne physique
 
@@ -83,7 +86,10 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
 - **Inclure** : prénoms composés (`Jean-Pierre`) en entier ; **initiale de prénom**
   accompagnant un nom (`J. DUPONT` → `J.` est un PRENOM).
 - **Ne pas inclure** : prénoms entrant dans un nom de voie (`rue Victor Hugo` → ADRESSE),
-  d'établissement (`Hôpital Georges Pompidou`) ou de société.
+  d'établissement (`Hôpital Georges Pompidou`) ou de société ; **mots ordinaires** du document
+  (`devis`, `Devis`, `DEVIS`, `facture`, `note`…), même en casse de prénom ou en MAJUSCULES :
+  un prénom désigne une personne, jamais un document ou un acte ; civilités et titres (`Dr`,
+  `Docteur`, `Mme`…).
 
 ## DATE_NAISSANCE — Date de naissance
 
@@ -209,6 +215,28 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
   dossier.
 
 ---
+
+## Mots à ne jamais pseudonymiser
+
+<!--
+  NOTE POUR LES MAINTENEURS : cette section est AUSSI lue par le code (pseudo/exceptions.py), qui
+  l'applique après toutes les détections (agent IA, règles, Azure AI Language, propagation) :
+  - une zone qui ne contient QUE des mots de la liste n'est pas pseudonymisée ;
+  - un mot de la liste au début ou à la fin d'une zone en est retiré (`Dr DUPONT` → `DUPONT`).
+  Casse et accents ignorés ; valeurs séparées par des virgules ; un mot = une valeur (pas de
+  phrase). Ne jamais y mettre un vrai nom de famille : il ne serait plus pseudonymisé nulle part.
+-->
+
+Ces mots ne sont jamais des données personnelles, quelle que soit leur casse (`devis`, `Devis`,
+`DEVIS`) ou leur position (début de ligne, titre en MAJUSCULES) : ne jamais les signaler, ni seuls
+ni comme partie d'une valeur.
+
+- **Civilités et titres** : M., Mr, Mme, Mlle, Monsieur, Madame, Mademoiselle, Messieurs,
+  Mesdames, Dr, Dr., Docteur, Docteurs, Pr, Pr., Professeur, Me, Maître
+- **Mots courants** : devis, facture, factures, avoir, note, honoraires, reçu, recu, ordonnance,
+  prescription, attestation, certificat, bordereau, décompte, decompte, relevé, releve, courrier,
+  objet, référence, reference, total, montant, patient, patiente, assuré, assure, adhérent,
+  adherent, bénéficiaire, beneficiaire, praticien, signature, cachet
 
 ## Organisations à ne jamais pseudonymiser
 

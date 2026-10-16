@@ -7,7 +7,8 @@ Usage (depuis la racine du projet) :
 Par défaut, les pièces sont écrites dans « <nom du mail>_pieces/ », à côté du .eml.
 - Les noms de fichiers encodés (=?UTF-8?…?=) sont décodés ; les caractères interdits sous Windows
   et les chemins (« ../ ») sont neutralisés ; deux pièces de même nom ne s'écrasent pas.
-- --inline ajoute les images intégrées au corps (logos, signatures), ignorées sinon.
+- Toute partie qui porte un nom de fichier est extraite, même déclarée « inline » (photos jointes
+  depuis un iPhone, Outlook, Gmail) ; --inline ajoute les images SANS nom du corps (logos, signatures).
 - Un mail joint à un mail (message/rfc822) est extrait en .eml ; --recursif extrait aussi ses
   propres pièces jointes, dans un sous-dossier.
 
@@ -69,8 +70,13 @@ def chemin_libre(dossier: Path, nom: str) -> Path:
 def pieces(partie: EmailMessage, inline: bool, racine: bool = True):
     """Parties du mail à extraire : pièces jointes, mails joints et, avec inline, images intégrées.
 
-    Un mail joint est rendu tel quel, sans descendre dedans : ses propres pièces ne sont extraites
-    qu'avec --recursif, depuis le .eml écrit.
+    - Une partie qui porte un nom de fichier est une pièce jointe, quelle que soit sa disposition :
+      iPhone, Outlook et Gmail déclarent souvent les photos jointes « inline » (affichées dans le
+      corps), avec leur nom (IMG_0421.JPG).
+    - Une image SANS nom (logo, signature appelés par cid: dans le corps HTML) n'est extraite
+      qu'avec --inline.
+    - Un mail joint est rendu tel quel, sans descendre dedans : ses propres pièces ne sont
+      extraites qu'avec --recursif, depuis le .eml écrit.
     """
     if partie.get_content_type() == "message/rfc822" and not racine:
         yield partie
@@ -78,10 +84,9 @@ def pieces(partie: EmailMessage, inline: bool, racine: bool = True):
         for enfant in partie.iter_parts():
             yield from pieces(enfant, inline, racine=False)
     elif not racine:
-        disposition = partie.get_content_disposition()
-        if disposition == "attachment" or (disposition is None and partie.get_filename()):
+        if partie.get_content_disposition() == "attachment" or partie.get_filename():
             yield partie
-        elif inline and disposition == "inline" and partie.get_content_maintype() == "image":
+        elif inline and partie.get_content_maintype() == "image":
             yield partie
 
 
@@ -125,7 +130,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Extrait les pièces jointes d'un fichier .eml")
     parser.add_argument("eml", type=Path, help="fichier .eml à lire")
     parser.add_argument("--dossier", type=Path, help="dossier de sortie (défaut : <nom du mail>_pieces)")
-    parser.add_argument("--inline", action="store_true", help="extraire aussi les images intégrées au corps")
+    parser.add_argument("--inline", action="store_true", help="extraire aussi les images sans nom intégrées au corps (logos, signatures)")
     parser.add_argument("--recursif", action="store_true", help="extraire aussi les pièces des mails joints")
     args = parser.parse_args()
 

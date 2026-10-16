@@ -59,6 +59,17 @@ p1-l3: Né le 12/03/1985 - N° SS : 1 85 03 75 123 456 78
   type ni en omettre un déclaré. Le type `PERSONNE` est réservé au filet Azure AI Language
   (nom complet non découpé).
 
+## Mots à ne jamais pseudonymiser
+
+La section du même nom, dans `champs-a-pseudonymiser.md`, liste les mots qui ne sont jamais des
+données personnelles : civilités et titres (`Dr`, `Docteur`, `Mme`…) et vocabulaire courant des
+documents (`devis`, `facture`, `ordonnance`…). L'agent IA la lit, et le code l'applique après
+toutes les détections et la propagation, quelle qu'en soit la source : une zone qui ne contient
+que ces mots est retirée, et ces mots sont retirés du début et de la fin d'une zone
+(`Dr DUPONT` → seul `DUPONT` est remplacé). Casse et accents sont ignorés. Ajouter un mot =
+compléter une puce, puis publier. **Ne jamais y mettre un nom de famille** : il ne serait plus
+pseudonymisé nulle part.
+
 ## Organisations à ne jamais pseudonymiser
 
 La section du même nom, dans `champs-a-pseudonymiser.md`, liste les partenaires (noms, domaines

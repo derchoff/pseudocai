@@ -365,8 +365,16 @@ def _assign_surrogates(
     for s, text in texts:
         strat = strategy(s.type)
         originals.setdefault(strat, set()).add(normalize(strat, text))
+    # Une même valeur écrite dans des casses différentes (« Dupont », « DUPONT ») reçoit la même
+    # valeur fictive, dans la casse de chaque occurrence : sinon l'indice de genre, qui dépend de la
+    # civilité voisine, pourrait donner deux prénoms différents.
+    chosen: dict[tuple[str, str], str] = {}
     for s, text in texts:
         strat = strategy(s.type)
+        same = (s.type, text.strip().casefold())
+        if same in chosen:
+            s.surrogate = chosen[same] if strat == "email" else _same_case(text, chosen[same])
+            continue
         s.surrogate = factory.unique(
             generator(s.type),
             text,
@@ -377,6 +385,19 @@ def _assign_surrogates(
         )
         if strat == "email" and catalog is not None:
             s.surrogate = catalog.exceptions.with_listed_domain(text, s.surrogate)
+        chosen[same] = s.surrogate
+
+
+def _same_case(template: str, surrogate: str) -> str:
+    """La valeur fictive dans la casse de l'occurrence : MAJUSCULES, minuscules, ou Initiale."""
+    letters = [c for c in template if c.isalpha()]
+    if len(letters) > 1 and all(c.isupper() for c in letters):
+        return surrogate.upper()
+    if letters and all(c.islower() for c in letters):
+        return surrogate.lower()
+    if surrogate.isupper() or surrogate.islower():
+        return re.sub(r"[^\W\d_]+", lambda m: m.group(0).capitalize(), surrogate)
+    return surrogate
 
 
 def _occurrences(spans: list[Span], content: DocumentContent) -> list[dict]:

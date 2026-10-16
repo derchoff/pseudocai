@@ -313,6 +313,27 @@ flowchart LR
 DB `occurrences`, avec pour `document` le chemin publié du fichier (`mail.json` pour les
 en-têtes, `body.html|txt` pour le corps, la pièce pour une pièce jointe).
 
+## Mots à ne jamais pseudonymiser
+
+Une autre section du référentiel liste les mots qui ne sont jamais des données personnelles :
+civilités et titres (`Dr`, `Docteur`, `Mme`…) et vocabulaire courant (`devis`, `facture`…). Elle
+est appliquée par le code ([exceptions.py](../src/pseudo/exceptions.py)) avec la liste des
+organisations, après toutes les détections **et la propagation** :
+
+| Zone détectée | Résultat |
+|---|---|
+| Uniquement des mots de la liste (`DEVIS`, `Docteur`) | Retirée : rien n'est remplacé. |
+| Mot de la liste en tête ou en queue (`Dr DUPONT`, souvent renvoyé par Azure AI Language) | Rognée : seul `DUPONT` est remplacé. |
+| Mot qui contient un mot de la liste (`DEVISSE`) | Inchangée : la comparaison porte sur des mots entiers. |
+
+Sans ce garde-fou, une seule erreur (`DEVIS` pris pour un prénom) était étendue par la
+propagation à toutes les occurrences, quelle que soit leur casse.
+
+**Même valeur, même valeur fictive.** Dans un document, une valeur écrite dans des casses
+différentes (`DUPONT`, `Dupont`, `dupont`) reçoit une seule valeur fictive, dans la casse de chaque
+occurrence. Auparavant, l'indice de genre tiré de la civilité voisine pouvait produire deux
+prénoms différents.
+
 ## Organisations à ne jamais pseudonymiser
 
 Une section du référentiel des champs, [champs-a-pseudonymiser.md](../prompts/champs-a-pseudonymiser.md),

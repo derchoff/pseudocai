@@ -421,3 +421,4 @@ données et sa règle de purge, puis recrée la rubrique Event Grid sur le nouve
 | Nouvelle variable `enable_mail_processing` (`false` par défaut) | À `true` : `.eml` ajouté au filtre Event Grid, réglage `MAIL_PROCESSING_ENABLED` sur les apps. |
 | Nouvelle Function `split_mail` dans l'app principale | Publiée par `deploy.ps1`. Nouvelle dépendance `azure-servicebus` (envoi des tâches des pièces jointes). |
 | Section « Organisations à ne jamais pseudonymiser » dans `champs-a-pseudonymiser.md` | À publier avec `publish-prompts.ps1` (fait par `deploy.ps1`). Elle s'applique aussi aux PDF et aux images. |
+| Section « Mots à ne jamais pseudonymiser » dans `champs-a-pseudonymiser.md` | **Code et prompts à déployer ensemble** (`deploy.ps1`) : sans le nouveau code, la section n'est lue que par l'agent IA. |
