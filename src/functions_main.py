@@ -2,8 +2,10 @@
 
     incoming-events ──► route_incoming ──► pdf-jobs   ──► pseudonymise_job
                                        ├─► image-jobs ──► (app images : functions_images.py)
-                                       └─► mail-jobs  ──► split_mail ──► pdf-jobs / image-jobs
-                                                          (une tâche par pièce jointe du mail)
+                                       ├─► mail-jobs  ──► split_mail ──► pdf-jobs / image-jobs
+                                       │                  (une tâche par pièce jointe du mail)
+                                       └─► text-jobs  ──► pseudonymise_text
+                                                          (JSON de métadonnées <document>.json)
 
 Chaque déclencheur lit une file Service Bus. Une exception remet le message dans sa file
 (nouvel essai), puis en dead-letter après max_delivery_count tentatives.
@@ -17,10 +19,11 @@ import azure.functions as func
 
 from pseudo.config import Settings
 from pseudo.handler import handle_pdf_job
+from pseudo.json_jobs import handle_text_job
 from pseudo.outputs import SimpleStorageContext
 from pseudo.mails.split import handle_mail_job
 from pseudo.queues import QueueSender
-from pseudo.router import QUEUE_IMAGE, QUEUE_MAIL, QUEUE_PDF, route_event
+from pseudo.router import QUEUE_IMAGE, QUEUE_MAIL, QUEUE_PDF, QUEUE_TEXT, route_event
 from pseudo.runtime import Runtime, build_runtime, build_storage_context, credential
 
 bp = func.Blueprint()
@@ -63,10 +66,16 @@ def get_sender() -> QueueSender:
 @bp.service_bus_queue_output(arg_name="pdfjobs", queue_name="%PDF_QUEUE_NAME%", connection="ServiceBusConnection")
 @bp.service_bus_queue_output(arg_name="imagejobs", queue_name="%IMAGE_QUEUE_NAME%", connection="ServiceBusConnection")
 @bp.service_bus_queue_output(arg_name="mailjobs", queue_name="%MAIL_QUEUE_NAME%", connection="ServiceBusConnection")
+@bp.service_bus_queue_output(arg_name="textjobs", queue_name="%TEXT_QUEUE_NAME%", connection="ServiceBusConnection")
 def route_incoming(
-    msg: func.ServiceBusMessage, pdfjobs: func.Out[str], imagejobs: func.Out[str], mailjobs: func.Out[str]
+    msg: func.ServiceBusMessage,
+    pdfjobs: func.Out[str],
+    imagejobs: func.Out[str],
+    mailjobs: func.Out[str],
+    textjobs: func.Out[str],
 ) -> None:
-    """Function Service Bus : route un dépôt dans incoming/ vers la file PDF, image ou mail, ou en quarantaine."""
+    """Function Service Bus : route un dépôt dans incoming/ vers la file PDF, image, mail ou texte,
+    ou en quarantaine."""
     result = route_event(msg.get_body(), get_storage())
     if result.queue == QUEUE_PDF:
         pdfjobs.set(result.job.to_json())
@@ -74,6 +83,8 @@ def route_incoming(
         imagejobs.set(result.job.to_json())
     elif result.queue == QUEUE_MAIL:
         mailjobs.set(result.job.to_json())
+    elif result.queue == QUEUE_TEXT:
+        textjobs.set(result.job.to_json())
     logging.info("Événement %s routé : %s", msg.message_id, result.status)
 
 
@@ -101,3 +112,13 @@ def split_mail(msg: func.ServiceBusMessage) -> None:
     sender.send(os.environ["PDF_QUEUE_NAME"], pdf)
     sender.send(os.environ["IMAGE_QUEUE_NAME"], images)
     logging.info("Mail %s découpé : %d pièce(s) PDF, %d image(s)", msg.message_id, len(pdf), len(images))
+
+
+@bp.function_name("pseudonymise_text")
+@bp.service_bus_queue_trigger(arg_name="msg", queue_name="%TEXT_QUEUE_NAME%", connection="ServiceBusConnection")
+def pseudonymise_text(msg: func.ServiceBusMessage) -> None:
+    """Function Service Bus : pseudonymise un texte de la file text-jobs (JSON de métadonnées) et le
+    rattache à son document s'il est déjà traité."""
+    logging.info("Texte %s (tentative %s)", msg.message_id, msg.delivery_count)
+    status = handle_text_job(msg.get_body(), get_runtime())
+    logging.info("Texte %s traité : %s", msg.message_id, status)

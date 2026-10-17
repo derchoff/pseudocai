@@ -19,6 +19,7 @@ WEBP = "webp"
 BMP = "bmp"
 HEIF = "heif"
 MAIL = "eml"
+JSON = "json"  # métadonnées de la GED, à côté d'un document (<nom du document>.json)
 
 IMAGE_FORMATS = (JPEG, PNG, TIFF, WEBP, BMP, HEIF)
 
@@ -34,6 +35,7 @@ EXTENSIONS = {
     ".heic": HEIF,
     ".heif": HEIF,
     ".eml": MAIL,
+    ".json": JSON,
 }
 
 CONTENT_TYPES = {
@@ -45,6 +47,7 @@ CONTENT_TYPES = {
     BMP: "image/bmp",
     HEIF: "image/heif",
     MAIL: "message/rfc822",
+    JSON: "application/json",
 }
 
 # Type MIME d'une pièce jointe sans nom de fichier (image intégrée au corps d'un mail) -> extension.

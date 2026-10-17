@@ -11,6 +11,7 @@ locals {
     PDF_QUEUE_NAME                                = azurerm_servicebus_queue.pdf_jobs.name
     IMAGE_QUEUE_NAME                              = azurerm_servicebus_queue.image_jobs.name
     MAIL_QUEUE_NAME                               = azurerm_servicebus_queue.mail_jobs.name
+    TEXT_QUEUE_NAME                               = azurerm_servicebus_queue.text_jobs.name
 
     STORAGE_ACCOUNT_URL         = azurerm_storage_account.data.primary_blob_endpoint
     SOURCE_STORAGE_ACCOUNT_URL  = local.source_blob_endpoint
@@ -22,6 +23,7 @@ locals {
     DELETE_SOURCE_AFTER_SUCCESS = tostring(var.delete_source_after_success)
     IMAGE_PROCESSING_ENABLED    = tostring(var.enable_image_processing)
     MAIL_PROCESSING_ENABLED     = tostring(var.enable_mail_processing)
+    JSON_METADATA_ENABLED       = tostring(var.enable_json_metadata)
     MAIL_IMAGE_MIN_SIDE         = tostring(var.mail_image_min_side)
     IMAGE_EXTENSIONS            = join(",", var.image_extensions)
 

@@ -68,12 +68,28 @@ resource "azurerm_storage_management_policy" "data" {
     name    = "purge-work"
     enabled = true
     filters {
-      prefix_match = ["${local.containers.work}/"]
+      # Pas tout work/ : work/json-metadata/ a sa propre durée (règle suivante).
+      prefix_match = ["${local.containers.work}/jobs/", "${local.containers.work}/mails/"]
       blob_types   = ["blockBlob"]
     }
     actions {
       base_blob {
         delete_after_days_since_modification_greater_than = var.work_retention_days
+      }
+    }
+  }
+
+  # JSON de métadonnées pseudonymisés en attente de leur document (ou gardés pour un retraitement).
+  rule {
+    name    = "purge-json-metadata"
+    enabled = true
+    filters {
+      prefix_match = ["${local.containers.work}/json-metadata/"]
+      blob_types   = ["blockBlob"]
+    }
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = var.json_metadata_retention_days
       }
     }
   }

@@ -34,6 +34,7 @@ flowchart LR
     R -- PDF --> QP[[pdf-jobs]]
     R -- image --> QI[[image-jobs]]
     R -- mail .eml --> QMAIL[[mail-jobs<br/>voir « Mails »]]
+    R -- "&lt;document&gt;.json" --> QT[[text-jobs<br/>voir « JSON de métadonnées »]]
     R -- "format inconnu,<br/>images désactivées,<br/>trop volumineux" --> Q
     QI --> I
     I -- "render.pdf, ocr.pdf,<br/>transforms.json" --> W
@@ -68,6 +69,7 @@ Cosmos DB et les services IA.
 | ① Routage | principale (`functions_main.py`) | `incoming-events` (Event Grid) | Déduit le format **uniquement de l'extension** et envoie un job vers `pdf-jobs` ou `image-jobs`. Les extensions non prises en charge, les images quand leur traitement est désactivé et les fichiers trop volumineux vont en `quarantine/non-classe/`. |
 | ② Préparation des images | images (`functions_images.py`) | `image-jobs` | Décode l'image, la contrôle, prépare une copie redressée pour l'OCR et l'emballe en PDF dans `work/<job>/`. Transmet ensuite le job à `pdf-jobs`. |
 | ①bis Découpage des mails | principale (`functions_main.py`, `split_mail`) | `mail-jobs` | Découpe un `.eml` : en-têtes, objet et corps pseudonymisés, une tâche par pièce jointe ; voir [Mails](#mails-eml). |
+| ①ter JSON de métadonnées | principale (`functions_main.py`, `pseudonymise_text`) | `text-jobs` | Pseudonymise le JSON de la GED d'un document et le rattache à son document ; voir [JSON de métadonnées](#json-de-métadonnées-de-la-ged). |
 | ③ Pseudonymisation | principale (`functions_main.py`) | `pdf-jobs` | Traite un PDF d'origine ou une image préparée : OCR, agents IA, jetons, classification et caviardage. La sortie est produite au **format d'origine**. |
 
 Le storage où arrivent les documents est par défaut le compte de données du service. Il peut
@@ -323,6 +325,53 @@ flowchart LR
 **Ré-identification** : comme pour un document, chaque zone remplacée est enregistrée dans Cosmos
 DB `occurrences`, avec pour `document` le chemin publié du fichier (`mail.json` pour les
 en-têtes, `body.html|txt` pour le corps, la pièce pour une pièce jointe).
+
+## JSON de métadonnées de la GED
+
+Un document (PDF, image ou mail) peut arriver avec un JSON de métadonnées de la GED, **du même nom
+suivi de `.json`** (`facture.pdf.json`, `Acte de deces - 9253367.eml.json`). Il n'arrive jamais
+seul, mais **l'ordre d'arrivée n'est pas garanti**, et un document peut arriver sans JSON. Activé
+par la variable Terraform `enable_json_metadata` (`true` par défaut).
+
+**Le JSON ne décide jamais de son dossier** : il suit son document, classé d'après son contenu. Il
+ne participe pas au classement.
+
+```mermaid
+flowchart TD
+    J[&lt;document&gt;.json déposé] --> R[route_incoming]
+    R --> QT[[text-jobs]]
+    QT --> P[pseudonymise_text<br/>champs conservés recopiés,<br/>autres valeurs : agents IA]
+    P -- "1. écrit" --> W[(work/json-metadata/<br/>&lt;id du document&gt;.json<br/>ou .motif.json)]
+    P -- "2. puis lit" --> T{Trace du document ?}
+    T -- non --> WAIT[Attend dans work/]
+    T -- oui --> C[Copie dans le dossier du document,<br/>chemin ajouté à sa trace]
+    D[Document traité,<br/>trace écrite] -- "puis lit" --> W
+    W --> C
+```
+
+| Pièce | Rôle |
+|---|---|
+| [json_metadata.py](../src/pseudo/json_metadata.py) | Chaque valeur texte à analyser devient une ligne `chemin : valeur` (le chemin donne le contexte à l'agent), passe dans le pipeline, puis reprend sa place. Structure, ordre des clés, nombres et dates inchangés. |
+| [json_rules.py](../src/pseudo/json_rules.py) | Sections du référentiel « Champs JSON à ne jamais modifier » (recopiés sans agent IA) et « Libellés de service » (`Gestion…`, `Administrateur…` dans les champs `Gestionnaire dédié *`). |
+| [json_jobs.py](../src/pseudo/json_jobs.py) | File `text-jobs` : écrit le JSON pseudonymisé dans `work/json-metadata/`, **puis** lit la trace du document et le copie s'il est terminé. |
+
+**Ordre d'arrivée** : chaque côté **écrit d'abord, vérifie ensuite**. Le JSON s'écrit dans `work/`
+puis regarde si le document est terminé ; le document écrit sa trace puis regarde si le JSON est
+dans `work/`. Au moins l'un des deux voit l'autre ; une double copie est sans danger (même nom,
+même contenu).
+
+| Situation | Où va le JSON |
+|---|---|
+| Document publié, JSON pseudonymisé | À côté du document (`<type>/<chemin>/facture.pdf.json`), ou dans le dossier du mail (`<nom du .eml>.json`). |
+| Document publié, JSON illisible ou en doute | `quarantine/<type>/…` : JSON d'origine + `<nom>.json.motif.json`. Le document reste publié ; pour un mail, le JSON **ne participe pas** au « tout ou rien ». |
+| Document en quarantaine | À côté de l'original en quarantaine : JSON d'origine. |
+
+Le JSON pseudonymisé **reste dans `work/json-metadata/`** après la copie (règle de purge
+`purge-json-metadata`, `json_metadata_retention_days`, 7 jours) : un document retraité, ou classé
+autrement, le recopie dans son nouveau dossier, et le nettoyage des anciennes sorties supprime
+l'ancien JSON, puisque son chemin est dans la trace du document. Les valeurs remplacées sont
+enregistrées dans Cosmos DB `occurrences` sous l'identifiant `<document>-json`, avec le **chemin du
+champ** au lieu d'une position.
 
 ## Mots à ne jamais pseudonymiser
 

@@ -180,3 +180,36 @@ run "mails_actives" {
     error_message = "Mails activés : .eml dans le filtre Event Grid, réglages des Functions."
   }
 }
+
+run "json_metadata" {
+  command = plan
+
+  assert {
+    condition = (
+      contains(local.accepted_extensions, ".json")
+      && local.common_app_settings.JSON_METADATA_ENABLED == "true"
+      && local.common_app_settings.TEXT_QUEUE_NAME == "text-jobs"
+    )
+    error_message = "JSON de métadonnées activés par défaut : .json dans le filtre Event Grid, file text-jobs."
+  }
+  assert {
+    condition = (
+      contains([for r in azurerm_storage_management_policy.data.rule : r.name], "purge-json-metadata")
+      && !contains(flatten([for r in azurerm_storage_management_policy.data.rule : r.filters[0].prefix_match if r.name == "purge-work"]), "work/")
+    )
+    error_message = "work/json-metadata/ a sa propre purge ; purge-work ne vise plus tout work/."
+  }
+}
+
+run "json_metadata_desactives" {
+  command = plan
+
+  variables {
+    enable_json_metadata = false
+  }
+
+  assert {
+    condition     = !contains(local.accepted_extensions, ".json") && local.common_app_settings.JSON_METADATA_ENABLED == "false"
+    error_message = "JSON désactivés : .json absent du filtre Event Grid."
+  }
+}

@@ -43,6 +43,10 @@ quarantine_retention_days   = 30
 mail_image_min_side    = 300 # images de mail plus petites sur un côté : retirées (logos, icônes)
 enable_mail_processing = true
 
+# JSON de métadonnées de la GED (<nom du document>.json), publiés pseudonymisés avec leur document
+enable_json_metadata         = true
+json_metadata_retention_days = 7
+
 # Images (photos, scans) : crée l'app images et ajoute les extensions au filtre Event Grid
 enable_image_processing      = true
 image_function_max_instances = 5

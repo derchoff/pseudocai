@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 ORIGIN_PDF = "pdf"
 ORIGIN_IMAGE = "image"
 ORIGIN_MAIL = "mail"
+ORIGIN_JSON = "json-metadata"  # JSON de métadonnées d'un document (file « text-jobs »)
 
 
 @dataclass
@@ -79,8 +80,8 @@ class Job:
 
     @property
     def work_prefix(self) -> str:
-        """Dossier du job dans le container work/."""
-        return f"{self.job_id}/"
+        """Dossier du job dans le container work/ (work/jobs/<job>/ : purgé après work_retention_days)."""
+        return f"jobs/{self.job_id}/"
 
 
 def document_id(source_url: str) -> str:

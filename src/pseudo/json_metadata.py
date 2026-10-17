@@ -52,6 +52,8 @@ class JsonResult:
     reasons: list[str]
     report: dict
     pipeline: PipelineResult | None = None
+    # Valeurs remplacées : jeton, type, valeur fictive et chemin du champ (ré-identification).
+    occurrences: list[dict] = field(default_factory=list)
 
 
 def _leaves(node, path: tuple = ()):
@@ -154,7 +156,20 @@ def pseudonymise_json(data: bytes, settings, services, rules: JsonRules) -> Json
     )
     report = {**result.report, **report}
     output = _dump(read_back(parsed, built, result.spans)) if result.status == "ok" else None
-    return JsonResult(output, result.status, result.reasons, report, result)
+    return JsonResult(output, result.status, result.reasons, report, result, _occurrences(built, result.occurrences))
+
+
+def _occurrences(built: JsonText, occurrences: list[dict]) -> list[dict]:
+    """Occurrences du pipeline, repérées par le chemin du champ (pas de position sur une page)."""
+    out = []
+    for occ in occurrences:
+        prefix = built.prefixes.get(occ.get("ligne"), "")
+        start, end = occ.get("caracteres", [0, 0])
+        out.append({
+            "jeton": occ["jeton"], "type": occ["type"], "valeur_fictive": occ["valeur_fictive"],
+            "chemin": prefix.removesuffix(" : "), "caracteres": [max(0, start - len(prefix)), max(0, end - len(prefix))],
+        })
+    return out
 
 
 def _dump(data) -> bytes:

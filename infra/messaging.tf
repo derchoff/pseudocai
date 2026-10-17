@@ -28,6 +28,7 @@ resource "azurerm_servicebus_namespace" "main" {
 #   pdf-jobs       : jobs de pseudonymisation (PDF, ou image préparée)
 #   image-jobs     : jobs de préparation d'image (créée même si les images sont désactivées : vide)
 #   mail-jobs      : mails .eml à découper (créée même si les mails sont désactivés : vide)
+#   text-jobs      : textes à pseudonymiser : JSON de métadonnées de la GED (<nom du document>.json)
 resource "azurerm_servicebus_queue" "incoming_events" {
   name                                 = "incoming-events"
   namespace_id                         = azurerm_servicebus_namespace.main.id
@@ -55,6 +56,15 @@ resource "azurerm_servicebus_queue" "mail_jobs" {
   dead_lettering_on_message_expiration = true
 }
 
+resource "azurerm_servicebus_queue" "text_jobs" {
+  name                                 = "text-jobs"
+  namespace_id                         = azurerm_servicebus_namespace.main.id
+  lock_duration                        = "PT5M"
+  max_delivery_count                   = var.servicebus_max_delivery_count
+  default_message_ttl                  = "P7D"
+  dead_lettering_on_message_expiration = true
+}
+
 resource "azurerm_servicebus_queue" "image_jobs" {
   name                                 = "image-jobs"
   namespace_id                         = azurerm_servicebus_namespace.main.id
@@ -71,6 +81,7 @@ locals {
     [".pdf"],
     var.enable_image_processing ? var.image_extensions : [],
     var.enable_mail_processing ? [".eml"] : [],
+    var.enable_json_metadata ? [".json"] : [],
   )
 }
 
@@ -163,13 +174,14 @@ resource "azurerm_eventgrid_system_topic_event_subscription" "incoming_created" 
 
 # ------------------------------------------------------------------ droits Service Bus
 
-# App principale : reçoit incoming-events, pdf-jobs et mail-jobs ; envoie vers pdf-jobs, image-jobs
-# et mail-jobs.
+# App principale : reçoit incoming-events, pdf-jobs, mail-jobs et text-jobs ; envoie vers pdf-jobs,
+# image-jobs, mail-jobs et text-jobs.
 resource "azurerm_role_assignment" "func_sb_receiver" {
   for_each = {
     incoming = azurerm_servicebus_queue.incoming_events.id
     pdf      = azurerm_servicebus_queue.pdf_jobs.id
     mail     = azurerm_servicebus_queue.mail_jobs.id
+    text     = azurerm_servicebus_queue.text_jobs.id
   }
   scope                = each.value
   role_definition_name = "Azure Service Bus Data Receiver"
@@ -181,6 +193,7 @@ resource "azurerm_role_assignment" "func_sb_sender" {
     pdf   = azurerm_servicebus_queue.pdf_jobs.id
     image = azurerm_servicebus_queue.image_jobs.id
     mail  = azurerm_servicebus_queue.mail_jobs.id
+    text  = azurerm_servicebus_queue.text_jobs.id
   }
   scope                = each.value
   role_definition_name = "Azure Service Bus Data Sender"

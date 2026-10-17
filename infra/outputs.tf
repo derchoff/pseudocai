@@ -39,6 +39,7 @@ output "servicebus_queues" {
     pdf      = azurerm_servicebus_queue.pdf_jobs.name
     image    = azurerm_servicebus_queue.image_jobs.name
     mail     = azurerm_servicebus_queue.mail_jobs.name
+    text     = azurerm_servicebus_queue.text_jobs.name
   }
 }
 

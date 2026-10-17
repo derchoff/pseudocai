@@ -243,6 +243,18 @@ variable "enable_mail_processing" {
   default     = false
 }
 
+variable "enable_json_metadata" {
+  description = "Traite les JSON de métadonnées de la GED (<nom du document>.json) : filtre Event Grid, file text-jobs. Le JSON pseudonymisé est publié à côté de son document (ou dans le dossier du mail)."
+  type        = bool
+  default     = true
+}
+
+variable "json_metadata_retention_days" {
+  description = "Durée de conservation des JSON pseudonymisés en attente de leur document (work/json-metadata/), en jours. À aligner sur incoming_retention_days : un document retraité y retrouve son JSON."
+  type        = number
+  default     = 7
+}
+
 variable "mail_image_min_side" {
   description = "Mails : une image de moins de ce nombre de pixels sur un côté (logo, icône de signature) est retirée du mail, quel que soit son format. Les GIF sont toujours retirés."
   type        = number
