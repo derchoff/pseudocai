@@ -68,8 +68,8 @@ Cosmos DB et les services IA.
 |---|---|---|---|
 | ① Routage | principale (`functions_main.py`) | `incoming-events` (Event Grid) | Déduit le format **uniquement de l'extension** et envoie un job vers `pdf-jobs` ou `image-jobs`. Les extensions non prises en charge, les images quand leur traitement est désactivé et les fichiers trop volumineux vont en `quarantine/non-classe/`. |
 | ② Préparation des images | images (`functions_images.py`) | `image-jobs` | Décode l'image, la contrôle, prépare une copie redressée pour l'OCR et l'emballe en PDF dans `work/<job>/`. Transmet ensuite le job à `pdf-jobs`. |
-| ①bis Découpage des mails | principale (`functions_main.py`, `split_mail`) | `mail-jobs` | Découpe un `.eml` : en-têtes, objet et corps pseudonymisés, une tâche par pièce jointe ; voir [Mails](#mails-eml). |
-| ①ter JSON de métadonnées | principale (`functions_main.py`, `pseudonymise_text`) | `text-jobs` | Pseudonymise le JSON de la GED d'un document et le rattache à son document ; voir [JSON de métadonnées](#json-de-métadonnées-de-la-ged). |
+| ①bis Découpage des mails | principale (`functions_main.py`, `split_mail`) | `mail-jobs` | Découpe un `.eml`, **sans agent IA** : une tâche « texte du mail » dans `text-jobs`, une tâche par pièce jointe ; voir [Mails](#mails-eml). |
+| ①ter Textes | principale (`functions_main.py`, `pseudonymise_text`) | `text-jobs` | Pseudonymise le texte d'un mail (en-têtes, objet, noms des pièces, corps) ou le JSON de la GED d'un document, puis le rattache ; voir [Mails](#mails-eml) et [JSON de métadonnées](#json-de-métadonnées-de-la-ged). |
 | ③ Pseudonymisation | principale (`functions_main.py`) | `pdf-jobs` | Traite un PDF d'origine ou une image préparée : OCR, agents IA, jetons, classification et caviardage. La sortie est produite au **format d'origine**. |
 
 Le storage où arrivent les documents est par défaut le compte de données du service. Il peut
@@ -269,24 +269,28 @@ c'est voulu.
 
 ## Mails (.eml)
 
-Activés par la variable Terraform `enable_mail_processing`. Un mail produit **un dossier**, au nom
-unique et sans donnée personnelle, rangé comme les autres documents par type :
+Activés par la variable Terraform `enable_mail_processing`. Un mail produit **un dossier**, qui
+porte le **nom du fichier `.eml` d'origine sans son extension**, sous son chemin dans `incoming/`,
+rangé comme les autres documents par type (`incoming/lot1/Acte de deces - 9253367.eml` →
+`pseudonymised/<type>/lot1/Acte de deces - 9253367/`) :
 
 ```
-pseudonymised/<type>/mail-<date>-<empreinte>/
+pseudonymised/<type>/<chemin>/<nom du .eml>/
 ├── mail.json        expéditeur, destinataires, date, objet : pseudonymisés
 ├── body.html        corps pseudonymisé (body.txt si le mail n'a pas de version HTML)
 ├── body.pseudonymise.txt   corps en texte brut, sans balises, même pour un mail HTML
 ├── <pièces jointes> pseudonymisées, nom de fichier compris (facture_DUPONT.pdf -> facture_MEYER.pdf)
 ├── <pièce>.pseudonymise.txt  texte de chaque pièce, comme pour un document seul
+├── <nom du .eml>.json        JSON de métadonnées de la GED, s'il existe (pseudonymisé)
 └── rapport.json     classement, rapport du corps et de chaque pièce
-quarantine/<type>/mail-<date>-<empreinte>/
+quarantine/<type>/<chemin>/<nom du .eml>/
 ├── <mail d'origine>.eml
 └── motif.json
 ```
 
-L'empreinte est calculée avec la clé HMAC à partir du `Message-ID` : un même mail retraité
-retombe dans le même dossier, qui est remplacé. Un mail sans pièce jointe donne un dossier avec
+Comme pour un document seul, le nom du fichier d'origine apparaît en clair dans le chemin : un
+nom de fichier qui contiendrait un nom de personne n'est pas pseudonymisé (les noms des **pièces
+jointes**, eux, le sont). Un même mail retraité retombe dans le même dossier, qui est remplacé. Un mail sans pièce jointe donne un dossier avec
 `mail.json`, `body.*`, `body.pseudonymise.txt` et `rapport.json`.
 
 Les fichiers `.pseudonymise.txt` contiennent le texte publié (valeurs fictives, ou jetons en mode
@@ -302,25 +306,27 @@ accompagnent.
 flowchart LR
     IN[incoming/ *.eml] --> R[route_incoming]
     R --> QM[[mail-jobs]]
-    QM --> S[split_mail<br/>lecture du .eml]
-    S -- "pièce non prise en charge,<br/>trop de pièces" --> QQ[[quarantine/non-classe/mail-…/]]
-    S --> T[En-têtes + objet + noms des pièces<br/>+ corps : UN passage dans le pipeline]
+    QM --> S[split_mail<br/>lecture du .eml, sans agent IA]
+    S -- "pièce non prise en charge,<br/>trop de pièces" --> QQ[[quarantine/non-classe/&lt;nom du .eml&gt;/]]
+    S -- "texte du mail" --> QT[[text-jobs]]
+    QT --> T[En-têtes + objet + noms des pièces<br/>+ corps : UN passage dans le pipeline]
     S -- "une tâche par pièce" --> QP[[pdf-jobs / image-jobs]]
     QP --> PJ[Pièce pseudonymisée<br/>résultat dans work/]
     T --> W[(work/mails/&lt;job&gt;/)]
     PJ --> W
-    W -- "dernière pièce terminée" --> F[Finalisation :<br/>classement de l'ensemble]
-    F -- "tout est ok" --> OUT[[pseudonymised/&lt;type&gt;/mail-…/]]
-    F -- "une partie en doute" --> Q2[[quarantine/&lt;type&gt;/mail-…/]]
+    W -- "dernière partie terminée" --> F[Finalisation :<br/>classement de l'ensemble]
+    F -- "tout est ok" --> OUT[[pseudonymised/&lt;type&gt;/&lt;nom du .eml&gt;/]]
+    F -- "une partie en doute" --> Q2[[quarantine/&lt;type&gt;/&lt;nom du .eml&gt;/]]
+    F -. "puis" .-> J[JSON de métadonnées<br/>rattaché s'il attend dans work/]
 ```
 
 | Étape | Où | Ce qui se passe |
 |---|---|---|
-| Découpage | `split_mail` (app principale), [mails/split.py](../src/pseudo/mails/split.py) | Lecture du `.eml` avec la bibliothèque standard `email`. Sont **retirées** du résultat, sans quarantaine : les **GIF** (l'OCR ne les lit pas), les images de moins de `MAIL_IMAGE_MIN_SIDE` pixels sur un côté (300 par défaut, variable `mail_image_min_side`), **quels que soient leur format et leur type déclaré** (une icône de signature envoyée en `application/octet-stream` sans nom comprise), et les images **intégrées au corps** sous `IMAGE_MIN_SHORT_SIDE`. Leur nombre par raison est dans `rapport.json` (`corps.images_retirees`). Une pièce non prise en charge (Word, Excel, ZIP, mail joint…), une image alors que les images sont désactivées ou plus de `MAIL_MAX_ATTACHMENTS` pièces : le **mail entier** part en quarantaine, sans appel aux agents IA. Les tâches des pièces jointes sont envoyées avec le SDK Service Bus ([queues.py](../src/pseudo/queues.py)) : une liaison de sortie Azure Functions n'accepte qu'un message, et un type refusé (`func.Out[list[str]]`) empêcherait toutes les Functions de l'app de démarrer. |
-| Texte du mail | [mails/document.py](../src/pseudo/mails/document.py) | En-têtes (`De`, `À`, `Cc`, `Répondre à`), objet, noms des pièces jointes et corps forment **un seul texte**, pseudonymisé en un passage : une même personne reçoit la même valeur fictive partout. |
+| Découpage | `split_mail` (app principale), [mails/split.py](../src/pseudo/mails/split.py) | Lecture du `.eml` avec la bibliothèque standard `email`. Sont **retirées** du résultat, sans quarantaine : les **GIF** (l'OCR ne les lit pas), les images de moins de `MAIL_IMAGE_MIN_SIDE` pixels sur un côté (300 par défaut, variable `mail_image_min_side`), **quels que soient leur format et leur type déclaré** (une icône de signature envoyée en `application/octet-stream` sans nom comprise), et les images **intégrées au corps** sous `IMAGE_MIN_SHORT_SIDE`. Leur nombre par raison est dans `rapport.json` (`corps.images_retirees`). Une pièce non prise en charge (Word, Excel, ZIP, mail joint…), une image alors que les images sont désactivées ou plus de `MAIL_MAX_ATTACHMENTS` pièces : le **mail entier** part en quarantaine, sans appel aux agents IA. Les tâches des pièces jointes sont envoyées avec le SDK Service Bus ([queues.py](../src/pseudo/queues.py)) : une liaison de sortie Azure Functions n'accepte qu'un message, et un type refusé (`func.Out[list[str]]`) empêcherait toutes les Functions de l'app de démarrer. Le découpage **n'appelle aucun agent IA** : une limite de débit atteinte (429) ne peut plus le bloquer. |
+| Texte du mail | `pseudonymise_text` (file `text-jobs`), [mails/text.py](../src/pseudo/mails/text.py), [mails/document.py](../src/pseudo/mails/document.py) | En-têtes (`De`, `À`, `Cc`, `Répondre à`), objet, noms des pièces jointes et corps forment **un seul texte**, pseudonymisé en un passage : l'agent garde le contexte (« De : Jean DUPONT » éclaire la signature « Jean »), et une même personne reçoit la même valeur fictive partout. Le nom final de chaque pièce jointe vient de ce passage : les pièces sont rangées par numéro dans `work/`, et nommées à la finalisation. |
 | Corps HTML | [mails/html_body.py](../src/pseudo/mails/html_body.py) | Seuls les textes changent, la mise en forme est conservée. Les attributs `title`, `alt`, `aria-label` et les liens (`mailto:`, adresses web) sont aussi analysés. **Retirés** : scripts, `onclick`…, commentaires, liens `javascript:`, images distantes (suivi d'ouverture) ou en `data:`. Une image intégrée pointe vers son fichier pseudonymisé du dossier. |
 | Pièces jointes | `pseudonymise_job`, [mails/parts.py](../src/pseudo/mails/parts.py) | Traitées comme des documents normaux (préparation pour une image), sans classement individuel. Le résultat va dans `work/mails/<job>/`, pas dans `pseudonymised/`. |
-| Finalisation | [mails/finalize.py](../src/pseudo/mails/finalize.py) | Déclenchée par la dernière pièce terminée (chacune écrit son marqueur, puis regarde ; un verrou garantit une seule publication). Classement sur le texte de l'ensemble, puis **tout ou rien** : une seule partie en doute (manuscrit, image floue, résidus…) et le mail entier part en quarantaine. `work/` est purgé. |
+| Finalisation | [mails/finalize.py](../src/pseudo/mails/finalize.py) | Déclenchée par la dernière partie terminée, texte du mail ou pièce jointe, dans n'importe quel ordre (chacune écrit son marqueur, puis regarde ; un verrou garantit une seule publication). Classement sur le texte de l'ensemble, puis **tout ou rien** : une seule partie en doute (manuscrit, image floue, résidus…) et le mail entier part en quarantaine. `work/` est purgé, puis le JSON de métadonnées du mail est rattaché s'il attend déjà dans `work/json-metadata/`. |
 
 **Ré-identification** : comme pour un document, chaque zone remplacée est enregistrée dans Cosmos
 DB `occurrences`, avec pour `document` le chemin publié du fichier (`mail.json` pour les

@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 ORIGIN_PDF = "pdf"
 ORIGIN_IMAGE = "image"
 ORIGIN_MAIL = "mail"
+ORIGIN_MAIL_TEXT = "mail-text"  # texte d'un mail : en-têtes, objet, noms des pièces, corps (« text-jobs »)
 ORIGIN_JSON = "json-metadata"  # JSON de métadonnées d'un document (file « text-jobs »)
 
 

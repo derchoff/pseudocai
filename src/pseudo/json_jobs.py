@@ -45,14 +45,6 @@ WORK_PREFIX = "json-metadata/"
 JSON_SUFFIX = ".json"
 
 
-def handle_text_job(body: bytes | str, runtime) -> str:
-    """Tâche de la file « text-jobs » ; renvoie son statut."""
-    job = Job.from_json(body)
-    if job.origin == ORIGIN_JSON:
-        return handle_json_job(job, runtime)
-    raise ValueError(f"Origine inattendue dans text-jobs : {job.origin}")
-
-
 def handle_json_job(job: Job, runtime) -> str:
     """Pseudonymise le JSON, l'écrit dans work/json-metadata/, PUIS tente de le rattacher."""
     settings = runtime.settings

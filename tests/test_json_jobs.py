@@ -8,7 +8,8 @@ from fakes import FakeBlobService, MemoryStore, event, run_chain
 from pseudo.config import Settings
 from pseudo.jobs import document_id
 from pseudo.models import Entity
-from pseudo.json_jobs import attach_json_metadata, handle_text_job
+from pseudo.json_jobs import attach_json_metadata
+from pseudo.text_jobs import handle_text_job
 from pseudo.router import QUEUE_TEXT, route_event
 from pseudo.runtime import Runtime
 from test_classification import FakeClassifier, scores

@@ -7,13 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from fakes import FakeBlobService, MemoryStore, run_chain
+from fakes import FakeBlobService, MemoryStore, event, run_chain
 from pseudo.config import Settings
 from pseudo.exceptions import Exceptions, parse_exceptions
 from pseudo.images.prepare import handle_image_job
 from pseudo.mails.html_body import HtmlBody
 from pseudo.mails.parse import parse_eml
 from pseudo.prompts import LocalPromptSource, PromptRepository
+from pseudo.router import route_event
 from pseudo.runtime import Runtime
 from test_classification import FakeClassifier, scores
 from test_images import make_photo
@@ -89,7 +90,7 @@ def test_mail_is_published_as_one_folder(settings):
     folder = {n.rsplit("/", 1)[0] for n in files}
     assert len(folder) == 1
     folder = folder.pop()
-    assert re.fullmatch(r"dentaire/mail-20261014-[0-9a-f]{8}", folder)
+    assert folder == "dentaire/lot1/mail"  # nom du fichier .eml d'origine, sans l'extension
     names = {n.rsplit("/", 1)[1] for n in files}
     assert {"mail.json", "body.html", "body.pseudonymise.txt", "rapport.json"} <= names and len(names) == 6
     attachment = next(n for n in names if n.endswith(".pdf"))
@@ -359,3 +360,53 @@ def test_text_names_do_not_collide():
     used = {"mail.json", "rapport.json"}
     assert _text_name("facture.pdf", used) == "facture.pseudonymise.txt"
     assert _text_name("facture.jpg", used) == "facture.jpg.pseudonymise.txt"
+
+
+# ---------------------------------------------------------------- texte du mail dans text-jobs
+
+
+def test_split_calls_no_ai_and_sends_the_mail_text_first(settings):
+    from pseudo.mails.split import handle_mail_job
+    from pseudo.router import QUEUE_PDF, QUEUE_TEXT
+
+    rt = runtime(settings, make_mail())
+    calls = []
+    rt.services.detector.detect = lambda lines: calls.append(lines) or []
+    route = route_event(event("lot1/mail.eml"), rt)
+    children = handle_mail_job(route.job.to_json(), rt)
+    assert calls == []  # découpage sans agent IA : une erreur 429 ne peut plus le bloquer
+    assert [q for q, _ in children] == [QUEUE_TEXT, QUEUE_PDF]
+    assert json.loads(children[0][1])["origin"] == "mail-text"
+
+
+def test_parts_can_finish_before_the_mail_text(settings):
+    from pseudo.handler import handle_pdf_job
+    from pseudo.mails.split import handle_mail_job
+    from pseudo.router import QUEUE_TEXT
+    from pseudo.text_jobs import handle_text_job
+
+    rt = runtime(settings, make_mail())
+    route = route_event(event("lot1/mail.eml"), rt)
+    children = handle_mail_job(route.job.to_json(), rt)
+    text = [body for q, body in children if q == QUEUE_TEXT]
+    for queue, body in children:
+        if queue != QUEUE_TEXT:
+            assert handle_pdf_job(body, rt) == "ok"  # pièce prête, mail pas encore publié
+    assert published(rt) == {}
+    assert handle_text_job(text[0], rt) == "ok"  # la dernière partie publie le mail
+    names = {n.rsplit("/", 1)[1] for n in published(rt)}
+    pdf = next(n for n in names if n.endswith(".pdf"))
+    assert "DUPONT" not in pdf and pdf.removesuffix(".pdf") + ".pseudonymise.txt" in names
+
+
+def test_json_arrived_before_the_mail_is_attached_when_the_mail_is_published(settings, monkeypatch):
+    from test_json_metadata import GED
+    from pseudo.text_jobs import handle_text_job
+
+    monkeypatch.setenv("JSON_METADATA_ENABLED", "true")
+    rt = runtime(Settings.from_env(), make_mail())
+    rt.blob_service.put("incoming", "lot1/mail.eml.json", json.dumps(GED).encode())
+    route = route_event(event("lot1/mail.eml.json"), rt)
+    assert handle_text_job(route.job.to_json(), rt) == "en_attente"  # le mail n'est pas encore traité
+    assert run_chain(rt, "lot1/mail.eml")[0] == "ok"
+    assert "dentaire/lot1/mail/mail.eml.json" in published(rt)  # rattaché par la finalisation du mail

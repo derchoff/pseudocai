@@ -1,15 +1,17 @@
-"""Découpage d'un mail (file « mail-jobs », app principale).
+"""Découpage d'un mail (file « mail-jobs », app principale). Aucun appel aux agents IA.
 
 1. Lecture du .eml. Sont retirées du résultat, sans quarantaine : les GIF (illisibles par l'OCR),
    les images de moins de MAIL_IMAGE_MIN_SIDE pixels sur un côté, quels que soient leur format et leur
    type déclaré (logos, icônes de signature), et les images INTÉGRÉES au corps trop petites pour être
    lues (sous IMAGE_MIN_SHORT_SIDE). Pièce non prise en charge (Word, ZIP, mail joint…), image alors que les
-   images sont désactivées, ou trop de pièces : le mail entier part en quarantaine, sans appel aux
-   agents IA.
-2. En-têtes, objet, noms des pièces et corps pseudonymisés en un seul passage (document.py).
-3. Dossier de travail : mail.json, body.html|txt, pièces d'origine (voir workspace.py).
-4. Une tâche par pièce jointe, dans « pdf-jobs » ou « image-jobs ». Sans pièce jointe, le mail est
-   publié tout de suite.
+   images sont désactivées, ou trop de pièces : le mail entier part en quarantaine.
+2. Dossier de travail : état du mail et pièces d'origine (voir workspace.py).
+3. Une tâche « texte du mail » dans « text-jobs » (en-têtes, objet, noms des pièces et corps,
+   pseudonymisés ensemble : voir text.py) et une tâche par pièce jointe, dans « pdf-jobs » ou
+   « image-jobs ». La finalisation publie le mail quand toutes sont terminées.
+
+Le dossier publié porte le nom du fichier .eml d'origine, sans son extension, sous son chemin :
+incoming/lot1/Acte de deces - 9253367.eml -> pseudonymised/<type>/lot1/Acte de deces - 9253367/.
 """
 
 from __future__ import annotations
@@ -17,26 +19,21 @@ from __future__ import annotations
 import logging
 import posixpath
 import uuid
-from datetime import datetime
 
 from ..formats import PDF, is_image
 from ..image_codec import image_size, is_gif, sniff_size
-from ..jobs import ORIGIN_IMAGE, ORIGIN_PDF, Job
+from ..jobs import ORIGIN_IMAGE, ORIGIN_MAIL_TEXT, ORIGIN_PDF, Job
 from ..outputs import job_source_blob, previous_trace
-from ..pipeline import PipelineInput, run_pipeline
-from ..router import QUEUE_IMAGE, QUEUE_PDF
-from .document import build_mail_text, read_back
-from .finalize import quarantine_mail, try_finalize
-from .html_body import HtmlBody
+from ..router import QUEUE_IMAGE, QUEUE_PDF, QUEUE_TEXT
+from .finalize import TEXT_PART, quarantine_mail
 from .parse import MailParseError, ParsedMail, parse_eml
-from .workspace import BODY_TEXT_FILE, MailWorkspace
+from .workspace import MailWorkspace
 
 log = logging.getLogger(__name__)
 
 
-
 def handle_mail_job(body: bytes | str, runtime) -> list[tuple[str, str]]:
-    """Découpe le mail du job ; renvoie les tâches des pièces jointes : [(file, job JSON)]."""
+    """Découpe le mail du job ; renvoie ses tâches : [(file, job JSON)], texte du mail en premier."""
     settings = runtime.settings
     job = Job.from_json(body)
     previous = previous_trace(runtime, job)
@@ -52,9 +49,9 @@ def handle_mail_job(body: bytes | str, runtime) -> list[tuple[str, str]]:
     try:
         mail = parse_eml(original)
     except MailParseError:
-        quarantine_mail(runtime, job, original, _fallback_folder(job), ["mail_illisible"], {}, None, previous)
+        quarantine_mail(runtime, job, original, mail_folder(job), ["mail_illisible"], {}, None, previous)
         return []
-    folder = mail_folder(mail, job, runtime.services.pseudonymizer)
+    folder = mail_folder(job)
     removed = _drop_unusable_images(mail, settings)
     refused = _refusals(mail, settings)
     if refused:
@@ -62,27 +59,7 @@ def handle_mail_job(body: bytes | str, runtime) -> list[tuple[str, str]]:
         quarantine_mail(runtime, job, original, folder, reasons, {"pieces_refusees": detail}, None, previous)
         return []
 
-    # En-têtes, objet, noms des pièces et corps : un seul passage dans le pipeline.
-    html = HtmlBody(mail.body) if mail.body_format == "html" else None
-    built = build_mail_text(mail, html)
-    result = run_pipeline(
-        PipelineInput(pdf=b"", content=built.content, classify=False, source={"origine": "mail", "format": "eml"}),
-        settings,
-        runtime.services,
-    )
-    runtime.mapping_store.save(result.records)  # avant toute publication : un jeton publié est réversible
-    pseudo = read_back(built, mail, result.spans, html)
-
     ws = MailWorkspace.for_job(runtime, job.job_id)
-    body_file = "body.html" if html is not None else "body.txt"
-    ws.put("text/body.txt", result.token_text or "")
-    ws.put(f"out/{body_file}", pseudo.body)
-    ws.put(f"out/{BODY_TEXT_FILE}", pseudo.body_text)
-    ws.put_json("out/mail.json", _mail_json(mail, folder, pseudo, body_file))
-    header_lines = set(built.prefixes)
-    occurrences = [
-        {**o, "fichier": "mail.json" if o["ligne"] in header_lines else body_file} for o in result.occurrences
-    ]
     parts, children = [], []
     for attachment in mail.attachments:
         origin = ORIGIN_PDF if attachment.fmt == PDF else ORIGIN_IMAGE
@@ -90,39 +67,31 @@ def handle_mail_job(body: bytes | str, runtime) -> list[tuple[str, str]]:
         source_name = ws.put(f"in/{attachment.index}{ext.lower()}", attachment.data)
         part_document_id = f"{job.document_id}-{attachment.index:02d}"
         parts.append({
-            "index": attachment.index, "name": pseudo.filenames[attachment.index], "format": attachment.fmt,
+            "index": attachment.index, "format": attachment.fmt,
             "inline": attachment.content_id is not None, "document_id": part_document_id,
         })
         child = Job(
             job_id=str(uuid.uuid4()), document_id=part_document_id, source_container=settings.work_container,
             source_name=source_name, source_format=attachment.fmt, origin=origin, received_at=job.received_at,
-            parent={"mail": ws.prefix, "part": attachment.index, "name": pseudo.filenames[attachment.index]},
+            parent={"mail": ws.prefix, "part": attachment.index},
         )
         children.append((QUEUE_PDF if origin == ORIGIN_PDF else QUEUE_IMAGE, child.to_json()))
-    ws.put_json("state.json", {
-        "job": job.to_json(),
-        "folder": folder,
-        "parts": parts,
-        "body": {
-            "file": body_file,
-            "content_type": "text/html; charset=utf-8" if html is not None else "text/plain; charset=utf-8",
-            "reasons": result.reasons,
-            "report": {**result.report, "images_retirees": removed},
-            "occurrences": occurrences,
-        },
-    })
-    log.info("Mail découpé doc=%s pieces=%d corps=%s", job.document_id, len(parts), body_file)
-    if not parts:
-        try_finalize(runtime, ws)
-    return children
+    # État écrit AVANT l'envoi des tâches : chacune le relit.
+    ws.put_json("state.json", {"job": job.to_json(), "folder": folder, "parts": parts, "images_retirees": removed})
+    text_job = Job(
+        job_id=str(uuid.uuid4()), document_id=f"{job.document_id}-texte", source_container=job.source_container,
+        source_name=job.source_name, source_format=job.source_format, origin=ORIGIN_MAIL_TEXT,
+        received_at=job.received_at, parent={"mail": ws.prefix, "part": TEXT_PART},
+    )
+    log.info("Mail découpé doc=%s pieces=%d", job.document_id, len(parts))
+    return [(QUEUE_TEXT, text_job.to_json())] + children
 
 
-def mail_folder(mail: ParsedMail, job: Job, pseudonymizer) -> str:
-    """Nom du dossier : mail-<date>-<empreinte>. Aucune donnée personnelle ; stable pour un même
-    mail (même Message-ID), donc un retraitement remplace le dossier précédent."""
-    date = mail.date or datetime.fromisoformat(job.received_at)
-    key = mail.message_id or job.document_id
-    return f"mail-{date:%Y%m%d}-{pseudonymizer.fingerprint('MAIL', key, 'texte')[:8]}"
+def mail_folder(job: Job) -> str:
+    """Nom du dossier du mail : son chemin dans incoming/, sans l'extension .eml
+    (lot1/Acte de deces - 9253367.eml -> lot1/Acte de deces - 9253367). Stable : un retraitement
+    remplace le dossier précédent."""
+    return posixpath.splitext(job.source_name)[0]
 
 
 def _drop_unusable_images(mail: ParsedMail, settings) -> dict[str, int]:
@@ -152,11 +121,6 @@ def _drop_unusable_images(mail: ParsedMail, settings) -> dict[str, int]:
     return removed
 
 
-def _fallback_folder(job: Job) -> str:
-    """Nom du dossier d'un fichier .eml illisible."""
-    return f"mail-{datetime.fromisoformat(job.received_at):%Y%m%d}-{job.document_id[:8]}"
-
-
 def _refusals(mail: ParsedMail, settings) -> tuple[list[str], list[dict]] | None:
     """Motifs de quarantaine immédiate du mail entier, et détail (extensions seulement : un nom de
     fichier peut contenir un nom de personne)."""
@@ -178,22 +142,3 @@ def _refusals(mail: ParsedMail, settings) -> tuple[list[str], list[dict]] | None
         reasons.append("trop_de_pieces_jointes")
         detail.append({"pieces": len(mail.attachments), "maximum": settings.mail_max_attachments})
     return (sorted(set(reasons)), detail) if reasons else None
-
-
-def _mail_json(mail: ParsedMail, folder: str, pseudo, body_file: str) -> dict:
-    """Contenu de mail.json : en-têtes pseudonymisés (organisations de la liste conservées)."""
-    return {
-        "dossier": folder,
-        "date": mail.date.isoformat() if mail.date else None,
-        "objet": pseudo.subject,
-        "de": pseudo.headers.get("from", []),
-        "a": pseudo.headers.get("to", []),
-        "cc": pseudo.headers.get("cc", []),
-        "repondre_a": pseudo.headers.get("reply-to", []),
-        "corps": body_file,
-        "pieces_jointes": [
-            {"fichier": pseudo.filenames[a.index], "format": a.fmt, "integree": a.content_id is not None}
-            for a in mail.attachments
-        ],
-    }
-

@@ -1,10 +1,12 @@
 """Dossier de travail d'un mail dans work/mails/<job du mail>/ (compte « data », purgé en fin de traitement).
 
-    state.json      état du mail : job, nom du dossier, pièces attendues, résultat du corps
+    state.json      état du mail : job, nom du dossier, pièces attendues, images retirées
     in/<n><ext>     pièces jointes d'origine (lues par les tâches des pièces)
-    out/…           mail.json, body.html|txt et pièces pseudonymisées (noms définitifs)
+    out/…           mail.json, body.html|txt, body.pseudonymise.txt, names.json (noms définitifs
+                    des pièces), part-<n> (pièce pseudonymisée, nommée à la finalisation)
     text/…          textes pseudonymisés avec les jetons (classement de l'ensemble)
-    parts/<n>.json  une pièce terminée : statut, motifs, rapport, occurrences
+    parts/<n>.json  une partie terminée (pièce n, ou « texte » : le texte du mail) : statut,
+                    motifs, rapport, occurrences
     finalize.lock   pris par la seule tâche qui publie le mail (création exclusive)
 
 Ces fichiers contiennent des données personnelles (pièces d'origine) ou leurs versions

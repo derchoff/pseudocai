@@ -133,9 +133,14 @@ def run_chain(runtime: Runtime, name: str, prepare_image=None) -> tuple[str, lis
 def _run_mail(runtime: Runtime, job_json: str, prepare_image, messages: list[str]) -> tuple[str, list[str]]:
     """Mail : découpage, puis chaque pièce jointe (préparation si image) ; statut = trace du mail."""
     from pseudo.mails.split import handle_mail_job
+    from pseudo.router import QUEUE_TEXT
+    from pseudo.text_jobs import handle_text_job
 
     for queue, child in handle_mail_job(job_json, runtime):
         messages.append(child)
+        if queue == QUEUE_TEXT:
+            handle_text_job(child, runtime)
+            continue
         if queue == QUEUE_IMAGE:
             child = prepare_image(child, runtime).to_json()
             messages.append(child)

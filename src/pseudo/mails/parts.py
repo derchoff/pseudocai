@@ -44,7 +44,7 @@ def handle_mail_part(job: Job, runtime) -> str:
         result = run_pipeline(pipeline_input, settings, runtime.services)
         if result.status == "ok":
             runtime.mapping_store.save(result.records)
-            ws.put(f"out/{job.parent['name']}", result.output)
+            ws.put(f"out/part-{part}", result.output)  # nommée à la finalisation (out/names.json)
             # Texte publiable de la pièce (valeurs fictives ou jetons, selon le mode de sortie).
             ws.put(f"text/{part}.publie.txt", result.text or "")
         ws.put(f"text/{part}.txt", result.token_text or "")  # jetons : sert au classement du mail
