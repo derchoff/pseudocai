@@ -261,6 +261,72 @@ ni comme partie d'une valeur.
   prescription, attestation, certificat, bordereau, décompte, decompte, relevé, releve, courrier,
   objet, référence, reference, total, montant, patient, patiente, assuré, assure, adhérent,
   adherent, bénéficiaire, beneficiaire, praticien, signature, cachet
+- **Comptes et services** : Administrateur, Gestion
+
+## Champs JSON à ne jamais modifier
+
+<!--
+  NOTE POUR LES MAINTENEURS : section lue par le code (pseudo/json_metadata.py) pour les fichiers
+  JSON de métadonnées de la GED (<nom du document>.json). Les valeurs de ces champs sont recopiées
+  telles quelles, sans passer par les agents IA ; toutes les AUTRES valeurs texte du JSON sont
+  pseudonymisées. Un chemin par puce, entre accents graves :
+  - les clés sont séparées par des points : `GED_metadata.metadatas.Statut` ;
+  - `[]` désigne tous les éléments d'un tableau : `GED_metadata.ancestors[].id` ;
+  - `*` en dernière position désigne tout ce qui est en dessous : `DOCUMENT.*` ;
+  - `*` dans un nom de clé remplace une suite de caractères : `Gestionnaire dédié *`.
+  Casse et accents des clés comptent : recopier les noms exacts du JSON.
+-->
+
+Les fichiers JSON de métadonnées de la GED reprennent ces champs à l'identique : ils ne
+contiennent pas de données personnelles.
+
+- `DOCUMENT.*`
+- `GED_metadata.id`
+- `GED_metadata.size`
+- `GED_metadata.mimetype`
+- `GED_metadata.created`
+- `GED_metadata.docType`
+- `GED_metadata.modified`
+- `GED_metadata.ancestors[].id`
+- `GED_metadata.ancestors[].type`
+- `GED_metadata.metadatas.Statut`
+- `GED_metadata.metadatas.Date de statut`
+- `GED_metadata.metadatas.Nature`
+- `GED_metadata.metadatas.Domaine`
+- `GED_metadata.metadatas.Famille`
+- `GED_metadata.metadatas.Priorité`
+- `GED_metadata.metadatas.A externaliser`
+- `GED_metadata.metadatas.Souscripteur`
+- `GED_metadata.metadatas.Apporteur`
+- `GED_metadata.metadatas.Porteur de risques`
+- `GED_metadata.metadatas.Produit`
+- `GED_metadata.metadatas.Num interne contrat`
+- `GED_metadata.metadatas.ANI`
+- `GED_metadata.metadatas.Date d'arrivée`
+- `GED_metadata.metadatas.Date de qualification`
+- `GED_metadata.metadatas.Identifiant lot`
+- `GED_metadata.metadatas.Identifiant pli`
+- `GED_metadata.metadatas.Sens`
+- `GED_metadata.metadatas.Distribution`
+- `GED_metadata.metadatas.Emetteur, Destinataire`
+- `GED_metadata.metadatas.Formation`
+- `GED_metadata.metadatas.Contrôle`
+- `GED_metadata.metadatas.Reprise`
+- `cafeteria_decompte.*`
+
+## Libellés de service
+
+<!--
+  NOTE POUR LES MAINTENEURS : section lue par le code (pseudo/json_metadata.py). Dans les champs
+  JSON désignés par « Champs » (même notation que la section précédente), une valeur qui COMMENCE
+  par un des mots de « Commencent par » (mot entier, casse et accents ignorés) est un libellé de
+  service, jamais une personne : elle est recopiée telle quelle. Une autre valeur de ces champs
+  (un nom de gestionnaire) reste pseudonymisée. Hors de ces champs, la règle ne s'applique pas :
+  ailleurs, « Administrateur » ou « Gestion » peuvent être suivis d'un vrai nom.
+-->
+
+- **Champs** : `GED_metadata.metadatas.Gestionnaire dédié *`
+- **Commencent par** : Administrateur, Gestion
 
 ## Organisations à ne jamais pseudonymiser
 

@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 from .catalog import CatalogError, parse_sections, raise_if_errors
 from .exceptions import Exceptions, parse_exceptions
+from .json_rules import JsonRules, parse_json_rules
 from .surrogates import GENERATORS
 
 STRATEGIES = ("texte", "chiffres", "alphanumerique", "email", "telephone", "date")
@@ -65,6 +66,8 @@ class FieldCatalog:
     fields: tuple[FieldDef, ...]
     # Section « Organisations à ne jamais pseudonymiser » (voir exceptions.py).
     exceptions: Exceptions = Exceptions()
+    # Sections « Champs JSON à ne jamais modifier » et « Libellés de service » (voir json_rules.py).
+    json_rules: JsonRules = JsonRules()
 
     @property
     def types(self) -> tuple[str, ...]:
@@ -124,6 +127,7 @@ def parse_fields(markdown: str) -> FieldCatalog:
     raise_if_errors(errors, "Référentiel des champs", FieldCatalogError)
     try:
         exceptions = parse_exceptions(markdown)
+        json_rules = parse_json_rules(markdown)
     except CatalogError as exc:
         raise FieldCatalogError(str(exc)) from exc
-    return FieldCatalog(fields=tuple(fields), exceptions=exceptions)
+    return FieldCatalog(fields=tuple(fields), exceptions=exceptions, json_rules=json_rules)
