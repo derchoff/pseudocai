@@ -144,12 +144,19 @@ def main(base: Path) -> None:
         report = data.get("rapport") or {}
         motifs = data.get("motifs") or []
         attachments = report.get("pieces_jointes") or []
+        # Pages analysées (PDF et images) : somme sur le document, ou sur les pièces jointes d'un mail
+        # (le corps d'un mail est du texte, sans page). Vide si le rapport ne les donne pas (refus avant
+        # l'extraction : format, image floue…).
+        reports_ = [r for _, r, _ in pipeline_reports(report, is_mail, original)]
         detail.append({
             "type": type_folder, "dossier": str(rel), "fichier": original, "nature": "mail" if is_mail else "document",
             "etape": data.get("etape"), "motifs": ", ".join(motifs),
             "pj": len(attachments) or None,
             "pj_quarantaine": sum(1 for a in attachments if a.get("statut") == "quarantine") or None,
             "json": jp,
+            "pages": _sum(r.get("pages") for r in reports_),
+            "pages_natives": _sum(r.get("pages_natives") for r in reports_),
+            "pages_ocr": _sum(r.get("pages_ocr") for r in reports_),
         })
 
         parts = None
@@ -283,11 +290,12 @@ def write_workbook(path: Path, detail: list[dict], refused: list[dict], ocr: lis
 
     d = wb.create_sheet("Détail")
     table(d, 1, ["Dossier de type", "Dossier", "Fichier d'origine", "Nature", "Étape", "Motifs",
-                 "Pièces jointes", "Pièces en quarantaine", "Motif (json)"],
-          [[x["type"], x["dossier"], x["fichier"], x["nature"], x["etape"], x["motifs"], x["pj"], x["pj_quarantaine"], x["json"]]
-           for x in detail], [16, 34, 60, 11, 18, 60, 10, 12, 30])
+                 "Pièces jointes", "Pièces en quarantaine", "Pages", "Pages natives", "Pages OCR", "Motif (json)"],
+          [[x["type"], x["dossier"], x["fichier"], x["nature"], x["etape"], x["motifs"], x["pj"], x["pj_quarantaine"],
+            x["pages"], x["pages_natives"], x["pages_ocr"], x["json"]]
+           for x in detail], [16, 34, 60, 11, 18, 60, 10, 12, 9, 9, 9, 30])
     d.freeze_panes = "A2"
-    d.auto_filter.ref = f"A1:I{len(detail) + 1}"
+    d.auto_filter.ref = f"A1:L{len(detail) + 1}"
     n = len(detail) + 1
 
     p = wb.create_sheet("Pièces non prises en charge")
@@ -343,20 +351,38 @@ def write_workbook(path: Path, detail: list[dict], refused: list[dict], ocr: lis
     ws["A1"].font = TITLE
     ws["A2"] = f"Seuil OCR : {OCR_THRESHOLD} (OCR_MIN_CONFIDENCE par défaut). Un fichier peut avoir plusieurs motifs."
     ws["A2"].font = FONT
+    # Pages analysées des fichiers en quarantaine (colonnes I, J, K de Détail)
+    ws.cell(4, 1, "Pages analysées (fichiers en quarantaine)").font = TITLE
+    rows = []
+    for i, (label, col) in enumerate((("Pages au total", "I"), ("dont pages de PDF natif (couche texte)", "J"),
+                                      ("dont pages lues par OCR (scans, photos)", "K"))):
+        r = 6 + i
+        rows.append([label, f'=SUMIFS(Détail!${col}$2:${col}${n},Détail!$D$2:$D${n},"mail")',
+                     f'=SUMIFS(Détail!${col}$2:${col}${n},Détail!$D$2:$D${n},"document")', f"=B{r}+C{r}",
+                     f"=IF($D$6=0,0,D{r}/$D$6)"])
+    start = table(ws, 5, ["Pages", "Mails (pièces jointes)", "Documents", "Total", "% des pages"], rows)
+    for r in range(6, 9):
+        ws.cell(r, 5).number_format = "0%"
+    ws.cell(start - 1, 1, "Un fichier refusé avant la lecture (format, image floue…) n'a pas de page comptée ; "
+                          "le corps d'un mail est du texte, sans page.").font = FONT
+    start += 1
+
     present = [m for m in MOTIFS if any(m in x["motifs"].split(", ") for x in detail)]
     present += sorted({m for x in detail for m in x["motifs"].split(", ") if m and m not in present})
+    ws.cell(start - 1, 1, "Motifs de quarantaine").font = TITLE
+    first = start + 1
+    total_row = first + len(present)
     rows = []
     for i, m in enumerate(present):
-        r = 5 + i
+        r = first + i
         rows.append([m,
                      f'=COUNTIFS(Détail!$F$2:$F${n},"*{m}*",Détail!$D$2:$D${n},"mail")',
                      f'=COUNTIFS(Détail!$F$2:$F${n},"*{m}*",Détail!$D$2:$D${n},"document")',
-                     f"=B{r}+C{r}", f"=D{r}/$D${5 + len(present)}"])
-    total_row = 5 + len(present)
+                     f"=B{r}+C{r}", f"=D{r}/$D${total_row}"])
     rows.append(["Fichiers en quarantaine", f'=COUNTIFS(Détail!$D$2:$D${n},"mail")',
                  f'=COUNTIFS(Détail!$D$2:$D${n},"document")', f"=B{total_row}+C{total_row}", None])
-    row = table(ws, 4, ["Motif", "Mails", "Documents", "Total", "% des fichiers"], rows, [34, 12, 12, 12, 14])
-    for r in range(5, total_row):
+    row = table(ws, start, ["Motif", "Mails", "Documents", "Total", "% des fichiers"], rows, [40, 14, 12, 12, 14])
+    for r in range(first, total_row):
         ws.cell(r, 5).number_format = "0%"
     for c in range(1, 5):
         ws.cell(total_row, c).font = Font(name="Arial", size=10, bold=True)
@@ -415,6 +441,12 @@ def write_workbook(path: Path, detail: list[dict], refused: list[dict], ocr: lis
         ws.cell(row, 1, f"{without_diagnostic} rapport(s) en entites_non_localisees ou residus_apres_verification "
                         "sans section diagnostic (produits avant REPORT_DETAIL=diagnostic) : absents de ces tableaux.").font = FONT
     wb.save(path)
+
+
+def _sum(values) -> int | None:
+    """Somme des valeurs renseignées ; None si aucune ne l'est."""
+    known = [v for v in values if isinstance(v, (int, float))]
+    return int(sum(known)) if known else None
 
 
 def _yes(value) -> str | None:
