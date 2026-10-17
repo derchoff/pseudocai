@@ -10,7 +10,9 @@ Chaque étape qui termine un document (succès ou quarantaine) :
 - supprime les sorties d'un traitement précédent devenues obsolètes (changement de type,
   passage de pseudonymised/ à quarantine/ ou inversement) ;
 - enregistre une trace (Cosmos DB) avec la liste des sorties écrites ;
-- supprime les fichiers intermédiaires de work/ et, si demandé, le document d'entrée.
+- supprime les fichiers intermédiaires de work/ et, si demandé, le document d'entrée ;
+- PUIS rattache son JSON de métadonnées de la GED s'il attend déjà dans work/json-metadata/
+  (voir json_jobs.py : chaque côté écrit d'abord, vérifie ensuite).
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from typing import Protocol
 from .classification import Classification
 from .config import Settings
 from .formats import CONTENT_TYPES
-from .jobs import Job
+from .jobs import ORIGIN_JSON, ORIGIN_MAIL_TEXT, Job
 from .mapping_store import MappingStore
 
 log = logging.getLogger(__name__)
@@ -124,6 +126,7 @@ def publish(
         job.document_id, _occurrence_items(job, outputs[0], occurrences or [], image_dpi)
     )
     _finish(ctx, job, "ok", report, classification, outputs, previous, STAGE_PSEUDONYMISATION)
+    attach_metadata_json(ctx, job)
     return outputs
 
 
@@ -176,6 +179,7 @@ def quarantine(
     ]
     outputs = _write(ctx, settings.quarantine_container, files, classification)
     _finish(ctx, job, "quarantine", {**report, "motifs": reasons}, classification, outputs, previous, stage)
+    attach_metadata_json(ctx, job)
     log.warning(
         "Document en quarantaine doc=%s etape=%s type=%s motifs=%s",
         job.document_id,
@@ -184,6 +188,17 @@ def quarantine(
         reasons,
     )
     return outputs
+
+
+def attach_metadata_json(ctx: StorageContext, job: Job) -> None:
+    """Rattache le JSON de métadonnées d'un document seul (PDF, image, ou fichier refusé au
+    routage), à appeler APRÈS l'écriture de sa trace. Rien pour un JSON lui-même, ni pour une partie
+    de mail (le mail entier le fait à sa finalisation)."""
+    if job.parent is not None or job.origin in (ORIGIN_JSON, ORIGIN_MAIL_TEXT):
+        return
+    from .json_jobs import attach_json_metadata
+
+    attach_json_metadata(ctx, job.document_id, job.source_container, job.source_name)
 
 
 def delete_work_files(ctx: StorageContext, job: Job) -> None:

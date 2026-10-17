@@ -6,12 +6,13 @@ import pytest
 
 from fakes import FakeBlobService, MemoryStore, event, run_chain
 from pseudo.config import Settings
-from pseudo.jobs import document_id
+from pseudo.handler import handle_pdf_job
+from pseudo.jobs import Job, document_id
+from pseudo.json_jobs import attach_json_metadata, handle_json_job
 from pseudo.models import Entity
-from pseudo.json_jobs import attach_json_metadata
-from pseudo.text_jobs import handle_text_job
 from pseudo.router import QUEUE_TEXT, route_event
 from pseudo.runtime import Runtime
+from pseudo.text_jobs import handle_text_job
 from test_classification import FakeClassifier, scores
 from test_json_metadata import CATALOG, GED, NAMES
 from test_pipeline import FakeDetector, make_text_pdf, services
@@ -96,11 +97,12 @@ def test_json_before_the_document_waits_in_work_then_is_attached(settings):
     assert rt.blob_service.names("pseudonymised") == []
     doc_id = document_id(f"https://st.blob.core.windows.net/incoming/{DOC}")
     assert f"json-metadata/{doc_id}.json" in rt.blob_service.names("work")
-    # Le document est traité ensuite ; une fois sa trace écrite, il rattache le JSON (étape 5 : appel
-    # automatique en fin de traitement du document).
+    # Le document est traité ensuite : une fois sa trace écrite, il rattache lui-même le JSON.
     assert run_chain(rt, DOC)[0] == "ok"
-    assert attach_json_metadata(rt, doc_id, "incoming", DOC) == "ok"
     assert f"dentaire/{JSON_NAME}" in rt.blob_service.names("pseudonymised")
+    assert f"pseudonymised/dentaire/{JSON_NAME}" in rt.mapping_store.traces[-1]["sorties"]
+    # Un second rattachement (JSON relivré, document retraité…) réécrit le même fichier, sans erreur.
+    assert attach_json_metadata(rt, doc_id, "incoming", DOC) == "ok"
 
 
 def test_document_in_quarantine_gets_the_original_json(settings):
@@ -139,3 +141,62 @@ def test_json_of_a_mail_goes_into_the_mail_folder(settings, monkeypatch):
     assert handle_text_job(route.job.to_json(), rt) == "ok"
     folder = {n.rsplit("/", 1)[0] for n in rt.blob_service.names("pseudonymised") if n.endswith("/mail.json")}.pop()
     assert f"{folder}/Acte de deces + Correspondance - 9000001.eml.json" in rt.blob_service.names("pseudonymised")
+
+
+def test_json_before_a_photo_is_attached_when_the_photo_is_published(settings, monkeypatch):
+    from pseudo.geometry import load_geometry
+    from pseudo.images.prepare import handle_image_job
+    from test_images import PhotoOcr, make_photo
+
+    monkeypatch.setenv("IMAGE_PROCESSING_ENABLED", "true")
+    rt = runtime(Settings.from_env(), with_document=False)
+    photo, p = make_photo()
+    rt.blob_service.put("incoming", "lot1/photo.jpg", photo)
+    rt.blob_service.put("incoming", "lot1/photo.jpg.json", json.dumps(GED).encode())
+    route = route_event(event("lot1/photo.jpg.json"), rt)
+    assert handle_text_job(route.job.to_json(), rt) == "en_attente"
+
+    def prepare(job_json, ctx):
+        job = handle_image_job(job_json, ctx)
+        rt.services.ocr = PhotoOcr(p, load_geometry(ctx.blob_service.data("work", job.prepared.transforms)))
+        return job
+
+    assert run_chain(rt, "lot1/photo.jpg", prepare_image=prepare)[0] == "ok"
+    assert "dentaire/lot1/photo.jpg.json" in rt.blob_service.names("pseudonymised")
+
+
+def test_json_before_a_file_refused_by_the_router_follows_it_into_quarantine(settings):
+    rt = runtime(settings, with_document=False)
+    rt.blob_service.put("incoming", "lot1/contrat.docx", b"PK...")
+    rt.blob_service.put("incoming", "lot1/contrat.docx.json", json.dumps(GED).encode())
+    route = route_event(event("lot1/contrat.docx.json"), rt)
+    assert handle_text_job(route.job.to_json(), rt) == "en_attente"
+    assert route_event(event("lot1/contrat.docx"), rt).status == "quarantine"  # format non pris en charge
+    quarantined = rt.blob_service.names("quarantine")
+    assert "non-classe/lot1/contrat.docx" in quarantined
+    assert "non-classe/lot1/contrat.docx.json" in quarantined  # JSON d'origine, à côté
+    assert json.loads(rt.blob_service.data("quarantine", "non-classe/lot1/contrat.docx.json")) == GED
+
+
+def test_redelivered_document_job_attaches_a_waiting_json(settings):
+    rt = runtime(settings)
+    status, messages = run_chain(rt, DOC)
+    assert status == "ok"
+    # Le JSON s'écrit dans work/ pendant que la trace du document n'est pas encore lisible (fenêtre
+    # de concurrence simulée) : il attend.
+    last = rt.mapping_store.traces[-1]
+    rt.mapping_store.traces.append({**last, "status": "en_cours"})
+    assert handle_json_job(Job.from_json(route_event(event(JSON_NAME), rt).job.to_json()), rt) == "en_attente"
+    rt.mapping_store.traces.pop()
+    # Le message du document est relivré : il ne retraite pas le document, mais rattache le JSON.
+    assert handle_pdf_job(messages[-1], rt) == "already_processed"
+    assert f"dentaire/{JSON_NAME}" in rt.blob_service.names("pseudonymised")
+
+
+def test_no_attachment_when_json_metadata_are_disabled(settings, monkeypatch):
+    rt = runtime(settings)
+    assert run_json(rt) == "en_attente"  # JSON prêt dans work/ pendant que les JSON sont activés
+    monkeypatch.setenv("JSON_METADATA_ENABLED", "false")
+    rt.settings = Settings.from_env()
+    assert run_chain(rt, DOC)[0] == "ok"
+    assert f"dentaire/{JSON_NAME}" not in rt.blob_service.names("pseudonymised")  # désactivé : rien de copié

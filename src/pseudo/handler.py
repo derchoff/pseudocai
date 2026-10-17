@@ -10,7 +10,15 @@ import logging
 
 from .classification import STATUT_NON_APPLICABLE, unclassified
 from .jobs import ORIGIN_IMAGE, Job
-from .outputs import STAGE_PSEUDONYMISATION, delete_work_files, previous_trace, publish, quarantine, source_blob
+from .outputs import (
+    STAGE_PSEUDONYMISATION,
+    attach_metadata_json,
+    delete_work_files,
+    previous_trace,
+    publish,
+    quarantine,
+    source_blob,
+)
 from .pipeline import PipelineInput, run_pipeline
 from .runtime import Runtime
 
@@ -33,6 +41,8 @@ def handle_pdf_job(body: bytes | str, runtime: Runtime) -> str:
         # Message relivré par Service Bus après un traitement déjà terminé.
         log.info("Job déjà traité doc=%s job=%s", job.document_id, job.job_id)
         delete_work_files(runtime, job)
+        # Le premier essai a pu échouer juste après la trace : on rattache le JSON s'il attend.
+        attach_metadata_json(runtime, job)
         return "already_processed"
 
     source = source_blob(runtime, job.source_container, job.source_name)

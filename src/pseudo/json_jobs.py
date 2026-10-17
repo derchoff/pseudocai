@@ -84,6 +84,8 @@ def attach_json_metadata(ctx: StorageContext, document_id: str, source_container
     dans work/) : au moins l'un des deux côtés voit l'autre.
     """
     settings = ctx.settings
+    if not settings.json_metadata_enabled:
+        return None
     work = ctx.blob_service.get_container_client(settings.work_container)
     base = f"{WORK_PREFIX}{document_id}"
     ready, doubtful = _exists(work, f"{base}.json"), _exists(work, f"{base}.motif.json")

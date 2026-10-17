@@ -360,6 +360,7 @@ flowchart TD
 | [json_metadata.py](../src/pseudo/json_metadata.py) | Chaque valeur texte à analyser devient une ligne `chemin : valeur` (le chemin donne le contexte à l'agent), passe dans le pipeline, puis reprend sa place. Structure, ordre des clés, nombres et dates inchangés. |
 | [json_rules.py](../src/pseudo/json_rules.py) | Sections du référentiel « Champs JSON à ne jamais modifier » (recopiés sans agent IA) et « Libellés de service » (`Gestion…`, `Administrateur…` dans les champs `Gestionnaire dédié *`). |
 | [json_jobs.py](../src/pseudo/json_jobs.py) | File `text-jobs` : écrit le JSON pseudonymisé dans `work/json-metadata/`, **puis** lit la trace du document et le copie s'il est terminé. |
+| [outputs.py](../src/pseudo/outputs.py), [mails/finalize.py](../src/pseudo/mails/finalize.py) | Côté document : **après** l'écriture de sa trace (publication, ou quarantaine au routage, à la préparation d'une image, à la pseudonymisation ; finalisation d'un mail), le document rattache son JSON s'il attend dans `work/`. Un message de document relivré (« déjà traité ») le rattache aussi : une copie interrompue est ainsi rattrapée. |
 
 **Ordre d'arrivée** : chaque côté **écrit d'abord, vérifie ensuite**. Le JSON s'écrit dans `work/`
 puis regarde si le document est terminé ; le document écrit sa trace puis regarde si le JSON est
