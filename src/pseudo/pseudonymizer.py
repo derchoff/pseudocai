@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from .datewords import parse_letter_date
 from .fields import BUILTIN_STRATEGIES, DEFAULT_STRATEGY
 
 _MONTHS = {
@@ -53,7 +54,8 @@ def normalize(strategy: str, value: str) -> str:
 
 
 def _normalize_date(value: str) -> str | None:
-    """Date ramenée à AAAA-MM-JJ (12/03/1985, 12 mars 1985, 1985-03-12), ou None si non reconnue.
+    """Date ramenée à AAAA-MM-JJ (12/03/1985, 12 mars 1985, 1985-03-12, vingt-trois mars mil neuf
+    cent cinquante-deux), ou None si non reconnue.
 
     Une année sur 2 chiffres donne « xxAA ».
     """
@@ -68,6 +70,9 @@ def _normalize_date(value: str) -> str | None:
     m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", v)
     if m:
         return v
+    letters = parse_letter_date(value)  # « vingt-trois mars mil neuf cent cinquante-deux »
+    if letters:
+        return f"{letters.year:04d}-{letters.month:02d}-{letters.day:02d}"
     return None
 
 

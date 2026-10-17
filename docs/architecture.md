@@ -515,6 +515,8 @@ pseudonymised/
 ├── kinesitherapie/
 ├── psychologie/
 ├── carte-grise/
+├── acte-naissance/
+├── acte-deces/
 └── non-classe/
 quarantine/
 ├── dentaire/       <chemin>.<ext> (original) · <chemin>.<ext>.motif.json

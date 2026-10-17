@@ -87,3 +87,40 @@ Sortie :
 Remarques sur l'exemple : `CABINET MEDICAL DES TILLEULS` est un établissement (non
 retenu) ; `02/09/2024` est la date du document (non retenue) ; `Paris` dans « Paris, le … »
 est une ville hors adresse (non retenue).
+
+# Exemple : acte d'état civil en texte suivi (données fictives)
+
+Entrée :
+
+```
+<document>
+p1-l1: MAIRIE DE VILLEFRANCHE - EXTRAIT D'ACTE DE NAISSANCE N° 412
+p1-l2: Le vingt-trois mars mil neuf
+p1-l3: cent cinquante-deux, à dix heures, est né à Villefranche Jean, Pierre
+p1-l4: LEMOINE, fils de Louis LEMOINE et de Marie-Thé-
+p1-l5: rèse FAURE, son épouse. Dressé le vingt-quatre mars mil neuf cent cinquante-deux.
+</document>
+```
+
+Sortie :
+
+```json
+{"entities": [
+  {"line_id": "p1-l2", "text": "vingt-trois mars mil neuf", "type": "DATE_NAISSANCE", "group": "d1", "confidence": 0.97},
+  {"line_id": "p1-l3", "text": "cent cinquante-deux", "type": "DATE_NAISSANCE", "group": "d1", "confidence": 0.97},
+  {"line_id": "p1-l3", "text": "Jean", "type": "PRENOM", "group": "", "confidence": 0.98},
+  {"line_id": "p1-l3", "text": "Pierre", "type": "PRENOM", "group": "", "confidence": 0.98},
+  {"line_id": "p1-l4", "text": "LEMOINE", "type": "NOM", "group": "", "confidence": 0.99},
+  {"line_id": "p1-l4", "text": "Louis", "type": "PRENOM", "group": "", "confidence": 0.98},
+  {"line_id": "p1-l4", "text": "LEMOINE", "type": "NOM", "group": "", "confidence": 0.99},
+  {"line_id": "p1-l4", "text": "Marie-Thé-", "type": "PRENOM", "group": "p1", "confidence": 0.95},
+  {"line_id": "p1-l5", "text": "rèse", "type": "PRENOM", "group": "p1", "confidence": 0.95},
+  {"line_id": "p1-l5", "text": "FAURE", "type": "NOM", "group": "", "confidence": 0.99}
+]}
+```
+
+Remarques sur l'exemple : la date de naissance est en lettres et coupée sur deux lignes → deux
+fragments du même `group`, **jamais convertis en chiffres** ; `à dix heures` et `Villefranche`
+ne font pas partie de la date ; `vingt-quatre mars mil neuf cent cinquante-deux` (après
+« Dressé le ») est la date de l'acte (non retenue) ; le prénom coupé par un tiret en fin de
+ligne donne deux fragments du même `group`.

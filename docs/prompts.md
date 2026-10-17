@@ -127,7 +127,7 @@ normalisation inconnue.
     | `alphanumerique` | lettres et chiffres en majuscules | NIR, IBAN, passeport |
     | `email` | espaces supprimés, minuscules | e-mails |
     | `telephone` | chiffres, préfixe +33 / 0033 ramené à 0 | téléphones |
-    | `date` | convertie en AAAA-MM-JJ si le format est reconnu | dates |
+    | `date` | convertie en AAAA-MM-JJ si le format est reconnu, y compris en toutes lettres (« vingt-trois mars mil neuf cent cinquante-deux » = 23/03/1952 : même jeton) | dates |
 
   - **Contrôle** : un type mal écrit, un doublon ou une normalisation inconnue **bloque le
     traitement**. Le message reste dans la file Service Bus pour être réessayé, et l'erreur

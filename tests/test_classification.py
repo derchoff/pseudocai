@@ -62,9 +62,13 @@ class FakeClassifier:
 # ---------------------------------------------------------------- référentiel des types
 
 
-def test_referential_declares_the_five_types():
-    assert CATALOG.types == ("DENTAIRE", "OPTIQUE", "KINESITHERAPIE", "PSYCHOLOGIE", "CARTE_GRISE")
+def test_referential_declares_the_seven_types():
+    assert CATALOG.types == (
+        "DENTAIRE", "OPTIQUE", "KINESITHERAPIE", "PSYCHOLOGIE", "CARTE_GRISE", "ACTE_NAISSANCE", "ACTE_DECES"
+    )
     assert CATALOG.folder("CARTE_GRISE") == "carte-grise"
+    assert CATALOG.folder("ACTE_NAISSANCE") == "acte-naissance"
+    assert CATALOG.folder("ACTE_DECES") == "acte-deces"
     assert CATALOG.folder("KINESITHERAPIE") == "kinesitherapie"
     assert "`NON_CLASSE`" in CATALOG.types_markdown()
 

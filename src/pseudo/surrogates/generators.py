@@ -18,6 +18,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Callable
 
+from ..datewords import LetterDate, int_to_words, parse_letter_date
+
 DATA = Path(__file__).resolve().parent / "data"
 
 MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
@@ -150,7 +152,8 @@ YearMonth = Callable[[int, int], tuple[int, int]]  # (aa, mm d'origine) -> (ann�
 
 
 def birth_date(value: str, rng: random.Random, year_month: YearMonth) -> str:
-    """Date fictive au même format (12/03/1985, 12 mars 1985, 1985-03-12, 03/1985).
+    """Date fictive au même format (12/03/1985, 12 mars 1985, 1985-03-12, 03/1985, ou en toutes
+    lettres : vingt-trois mars mil neuf cent cinquante-deux).
 
     Année et mois viennent de year_month, pour concorder avec le NIR fictif.
     """
@@ -181,7 +184,30 @@ def birth_date(value: str, rng: random.Random, year_month: YearMonth) -> str:
     if m:
         year, month = year_month(int(m.group(3)) % 100, int(m.group(1)))
         return f"{month:0{len(m.group(1))}d}{m.group(2)}{year}"
+    letters = parse_letter_date(v)
+    if letters:
+        return _letter_birth_date(letters, rng, year_month)
     return generic(value, rng)
+
+
+def _letter_birth_date(d: LetterDate, rng: random.Random, year_month: YearMonth) -> str:
+    """Date fictive écrite comme l'originale : jour et année en lettres ou en chiffres, même casse
+    (« vingt-trois mars mil neuf cent cinquante-deux » -> « onze juin mil neuf cent soixante »)."""
+    year, month = year_month(d.year % 100, d.month)
+    day = rng.randint(1, 28)
+    if d.day_in_words:
+        day_text = "premier" if day == 1 else int_to_words(day)
+    else:
+        day_text = "1er" if day == 1 and d.day_text.strip().lower() == "1er" else f"{day:0{len(d.day_text.strip())}d}"
+    year_text = int_to_words(year, mil=_fold(d.year_text).startswith("mil "), year=True) if d.year_in_words else str(year)
+
+    def styled(template: str, new: str) -> str:
+        """Casse du modèle ; une initiale majuscule (« Premier ») est reprise."""
+        out = case_like(template, new)
+        return out[:1].upper() + out[1:] if out == new and template[:1].isupper() else out
+
+    return (styled(d.day_text, day_text) + d.sep1 + styled(d.month_text, MONTHS[month - 1]) + d.sep2
+            + styled(d.year_text, year_text))
 
 
 def _month_index(name: str) -> int | None:

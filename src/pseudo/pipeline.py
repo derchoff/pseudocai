@@ -428,7 +428,18 @@ def _assign_surrogates(
     # valeur fictive, dans la casse de chaque occurrence : sinon l'indice de genre, qui dépend de la
     # civilité voisine, pourrait donner deux prénoms différents.
     chosen: dict[tuple[str, str], str] = {}
+    pieces = _split_group_surrogates(texts, content, lambda value, s: factory.unique(
+        generator(s.type),
+        value,
+        key=f"{s.type}|{normalize(strategy(s.type), value)}",
+        forbidden=originals[strategy(s.type)],
+        normalize=lambda v, strat=strategy(s.type): normalize(strat, v),
+        gender_hint=_gender_hint(content.line(s.line_id), s),
+    ))
     for s, text in texts:
+        if id(s) in pieces:
+            s.surrogate = pieces[id(s)]
+            continue
         strat = strategy(s.type)
         same = (s.type, text.strip().casefold())
         if same in chosen:
@@ -445,6 +456,46 @@ def _assign_surrogates(
         if strat == "email" and catalog is not None:
             s.surrogate = catalog.exceptions.with_listed_domain(text, s.surrogate)
         chosen[same] = s.surrogate
+
+
+def _split_group_surrogates(
+    texts: list[tuple[Span, str]], content: DocumentContent, make: Callable[[str, Span], str]
+) -> dict[int, str]:
+    """Valeur fictive des valeurs coupées sur plusieurs lignes (même group : date en lettres, nom
+    coupé par un tiret…) : une seule valeur fictive, fabriquée pour la valeur complète, puis répartie
+    sur les fragments au prorata de leurs mots. Sinon chaque fragment recevrait sa propre valeur
+    (« vingt-trois mars mil neuf » / « cent cinquante-deux » : une date complète puis du charabia).
+
+    Renvoie id(zone) -> morceau de la valeur fictive, pour les fragments d'un groupe complet.
+    """
+    runs: dict[tuple[str, str], list[tuple[Span, str]]] = {}
+    for s, text in sorted(texts, key=lambda t: (content.order(t[0].line_id), t[0].start)):
+        if s.value is not None and s.value.split() != text.split():
+            runs.setdefault((s.type, s.value), []).append((s, text))
+    out: dict[int, str] = {}
+    for (_, value), items in runs.items():
+        target = value.split()
+        start = 0
+        while start < len(items):
+            # Plus courte suite de fragments consécutifs qui reconstitue la valeur complète.
+            words: list[str] = []
+            for end in range(start, len(items)):
+                words += items[end][1].split()
+                if words == target or len(words) >= len(target):
+                    break
+            if words != target:
+                start += 1
+                continue
+            run = items[start:end + 1]
+            surrogate = make(value, run[0][0]).split()
+            counts = [len(t.split()) for _, t in run]
+            position = 0
+            for i, ((s, _), n) in enumerate(zip(run, counts)):
+                take = surrogate[position:] if i == len(run) - 1 else surrogate[position:position + n]
+                out[id(s)] = " ".join(take)
+                position += n
+            start = end + 1
+    return out
 
 
 def _same_case(template: str, surrogate: str) -> str:

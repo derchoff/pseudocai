@@ -66,7 +66,11 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
   - rubrique `C.1` d'une carte grise (titulaire) : nom PUIS prénom, tous deux en MAJUSCULES
     (`LEMAIRE SOPHIE` → NOM `LEMAIRE`, PRENOM `SOPHIE`), parfois sur deux lignes ;
   - rubrique `C.4.1` d'une carte grise : nombre de titulaires suivi du nom du cotitulaire
-    (`C.4.1 2 DELAROCHE` → NOM `DELAROCHE` ; le chiffre `2` n'est pas à marquer).
+    (`C.4.1 2 DELAROCHE` → NOM `DELAROCHE` ; le chiffre `2` n'est pas à marquer) ;
+  - actes de naissance, de décès et actes notariés : l'enfant ou le défunt, ses parents
+    (`fils de`, `fille de`), son conjoint (`époux de`, `épouse de`, `veuf de`, `veuve de`), le
+    déclarant, les témoins, l'officier de l'état civil, le notaire (`Maître`, `Me`) et les
+    héritiers sont tous des personnes physiques : signaler leurs noms et prénoms.
 - **Inclure** : noms composés (`Dupont-Moretti`, `de La Fontaine`) en entier, particules
   comprises.
 - **Ne pas inclure** : noms de sociétés, d'établissements, de marques, de produits, de
@@ -84,7 +88,9 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
 - **Indices** : libellés `Prénom`, `Prénoms`, `Prénom usuel` ; mot en casse normale accolé
   à un NOM en majuscules ; formule de politesse nominative (`Cher Jean,`).
 - **Inclure** : prénoms composés (`Jean-Pierre`) en entier ; **initiale de prénom**
-  accompagnant un nom (`J. DUPONT` → `J.` est un PRENOM).
+  accompagnant un nom (`J. DUPONT` → `J.` est un PRENOM) ; liste de prénoms d'état civil
+  séparés par des virgules (`Jean, Pierre, Marie DUPONT`) : un PRENOM par prénom, sans la
+  virgule.
 - **Ne pas inclure** : prénoms entrant dans un nom de voie (`rue Victor Hugo` → ADRESSE),
   d'établissement (`Hôpital Georges Pompidou`) ou de société ; **mots ordinaires** du document
   (`devis`, `Devis`, `DEVIS`, `facture`, `note`…), même en casse de prénom ou en MAJUSCULES :
@@ -98,10 +104,28 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
 - **Définition** : date de naissance d'une personne physique, quel que soit son format.
 - **Formats** : `12/03/1985`, `12-03-85`, `12.03.1985`, `12 mars 1985`, `1985-03-12`,
   `12/03/85`, `né le 12 mars`, `03/1985` (mois/année seul).
+- **Dates en toutes lettres** (actes de naissance, actes de décès, actes notariés) :
+  `vingt-trois mars mil neuf cent cinquante-deux`, `premier janvier deux mille`,
+  `dix-neuf février mille neuf cent quatre-vingt-dix-sept`, ou mélangées
+  (`23 mars mil neuf cent cinquante-deux`). Ce sont des dates de naissance comme les autres :
+  - signaler la date **telle qu'elle est écrite, en lettres** : ne JAMAIS la convertir en
+    chiffres (`vingt-trois mars mil neuf cent cinquante-deux`, pas `23/03/1952`) ;
+  - la valeur va du jour à l'année inclus : sans `le`, sans l'heure (`à dix heures trente`),
+    sans le lieu (`à Lyon`) ;
+  - une date en lettres est longue et souvent **coupée par un retour à la ligne** : produire un
+    fragment par ligne avec le même `group` (`vingt-trois mars mil neuf` sur une ligne,
+    `cent cinquante-deux` sur la suivante) ; un mot coupé par un tiret en fin de ligne
+    (`cinquante-` / `deux`) donne aussi un fragment par ligne.
 - **Indices** : `Date de naissance`, `Né(e) le`, `Née le`, `DDN`, `D.N.`, `Naissance`,
   `Date of birth`, `DOB`, position dans un bloc d'identité juste après nom et prénom.
+  Dans un **acte de naissance**, la date qui ouvre l'acte (`Le vingt-trois mars mil neuf cent
+  cinquante-deux, à dix heures, est né …`) est la date de naissance. Dans un **acte de décès**,
+  la date qui suit `né le`, `née le` ou `né(e) à … le` est la date de naissance du défunt ;
+  celles des parents, de l'époux ou du déclarant (`né le …` à côté de leur nom) aussi.
 - **Ne pas inclure** : date du document, date d'émission ou d'expiration, date de soins,
-  date de signature, dates d'échéance. Une date isolée sans aucun indice de naissance
+  date de signature, dates d'échéance ; dans un acte d'état civil ou notarié : date de
+  l'acte (`Dressé le …`, `Délivré le …`), date du décès (`est décédé(e) le …`), date de la
+  déclaration, dates des mentions marginales (mariage, divorce). Une date isolée sans aucun indice de naissance
   n'est à retenir que si elle se trouve dans un bloc d'identité d'une personne (dans ce cas
   `confidence` ≤ 0.6).
 - **Lieu de naissance** : non demandé (ne pas le marquer).
@@ -287,3 +311,8 @@ Ces organisations sont nos partenaires : leur nom n'est pas une donnée personne
      (`MERSSAIDESS` et `SR220TD` sont la marque et le modèle : à ne pas marquer).
    Sur une carte d'identité ou un passeport, les noms et prénoms y sont séparés par `<<` et la
    date de naissance y figure au format `AAMMJJ` : les signaler aussi.
+7. **Texte suivi** (actes d'état civil, actes notariés, courriers) : les lignes sont coupées
+   au milieu des phrases. Une valeur coupée par un retour à la ligne (date en lettres, nom
+   composé, adresse) donne **un fragment par ligne avec le même `group`**, chacun recopié
+   exactement depuis sa ligne ; un mot coupé par un tiret en fin de ligne (`Marie-Thé-` puis
+   `rèse`) aussi. Ne jamais recoller les morceaux dans une seule valeur.

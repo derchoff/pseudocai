@@ -86,3 +86,33 @@ actes, les codes de facturation et le vocabulaire.
 - **Ne pas confondre** : facture de garage, constat amiable, contrat ou attestation d'assurance
   auto qui citent un véhicule sans en être le certificat d'immatriculation (→ `NON_CLASSE` tant
   qu'aucun type dédié n'existe).
+
+## ACTE_NAISSANCE — Acte de naissance
+
+- **Dossier** : acte-naissance
+- **Indices** : « Acte de naissance », « Extrait d'acte de naissance », « Copie intégrale d'acte
+  de naissance », « avec filiation » / « sans filiation » ; en-tête de mairie ou de service de
+  l'état civil (« Mairie de … », « Officier de l'état civil », « Service central d'état civil »
+  pour les personnes nées à l'étranger) ; numéro d'acte ; formule « est né(e) », « fils de »,
+  « fille de » ; date et heure de naissance souvent **écrites en toutes lettres** (« le vingt-trois
+  mars mil neuf cent cinquante-deux, à dix heures ») ; rubrique « Mentions marginales » (mariage,
+  divorce, décès portés en marge) ; formule finale « Pour extrait conforme », « Délivré le … ».
+- **Ne pas confondre** : acte de décès qui rappelle la date de naissance du défunt
+  (→ `ACTE_DECES`) ; acte de mariage, livret de famille, acte de reconnaissance, carte
+  d'identité (→ `NON_CLASSE` tant qu'aucun type dédié n'existe).
+
+## ACTE_DECES — Acte de décès
+
+- **Dossier** : acte-deces
+- **Indices** : « Acte de décès », « Extrait d'acte de décès », « Copie intégrale d'acte de
+  décès » ; formule « est décédé(e) », « Le défunt », « La défunte » ; date et heure du décès,
+  date de naissance du défunt souvent **écrites en toutes lettres** ; « époux de », « épouse de »,
+  « veuf de », « veuve de », « fils de », « fille de » ; déclarant (« sur la déclaration de … ») ;
+  en-tête de mairie ou d'« Officier de l'état civil ». Sont aussi des actes de décès les
+  documents de **notaire** dont l'objet est d'établir un décès : acte de notoriété après décès,
+  attestation de décès ou de dévolution successorale établie par un notaire (« Maître … notaire »,
+  « office notarial », « succession de feu … »).
+- **Ne pas confondre** : acte de naissance portant une mention marginale de décès
+  (→ `ACTE_NAISSANCE`) ; facture de pompes funèbres, certificat médical de décès sans acte
+  d'état civil, courrier d'une caisse ou d'un assureur annonçant un décès (→ `NON_CLASSE` tant
+  qu'aucun type dédié n'existe).
