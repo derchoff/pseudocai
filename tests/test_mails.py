@@ -239,9 +239,60 @@ def test_small_inline_logo_is_removed_not_quarantined(settings):
     files = published(rt)
     assert not any(n.endswith(".png") for n in files)  # logo non publié
     report = json.loads(next(v for k, v in files.items() if k.endswith("rapport.json")))
-    assert report["corps"]["images_integrees_retirees"] == 1
+    assert report["corps"]["images_retirees"] == {"gif": 0, "trop_petites": 1, "integrees_illisibles": 0}
     body = next(v for k, v in files.items() if k.endswith("body.html")).decode("utf-8")
     assert "cid:" not in body
+
+
+def _png(width: int, height: int) -> bytes:
+    """Image PNG unie de la taille donnée."""
+    import pymupdf
+
+    return pymupdf.open().new_page(width=width, height=height).get_pixmap(dpi=72).tobytes("png")
+
+
+def _gif(width: int = 1200, height: int = 1200) -> bytes:
+    """Image GIF de la taille donnée (assez grande pour ne pas être retirée pour sa taille)."""
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (width, height), "white").save(buf, format="GIF")
+    return buf.getvalue()
+
+
+def test_gif_and_small_images_are_removed_whatever_their_type(settings):
+    """GIF (même grand) et images de moins de 300 px sur un côté (icône en octet-stream sans nom,
+    petite photo jointe avec son nom) : retirés, le mail est publié sans quarantaine."""
+    from email import message_from_bytes, policy
+
+    msg = message_from_bytes(make_mail(), policy=policy.default)
+    related = msg.get_body(("html",))
+    related.add_related(_png(64, 64), maintype="application", subtype="octet-stream", cid="<icone@example.com>")
+    related.add_related(_gif(), maintype="image", subtype="gif", cid="<anim@example.com>")
+    msg.add_attachment(_png(250, 800), maintype="image", subtype="png", filename="capture.png")
+    msg.add_attachment(_gif(), maintype="application", subtype="octet-stream", filename="banniere")
+    rt = runtime(settings, msg.as_bytes())
+    status, _ = run_chain(rt, "lot1/mail.eml")
+    assert status == "ok"
+    files = published(rt)
+    assert not any(n.endswith((".png", ".gif", ".bin")) or n.endswith("banniere") for n in files)
+    report = json.loads(next(v for k, v in files.items() if k.endswith("rapport.json")))
+    assert report["corps"]["images_retirees"] == {"gif": 2, "trop_petites": 2, "integrees_illisibles": 0}
+
+
+def test_mail_image_min_side_is_configurable(settings, monkeypatch):
+    """MAIL_IMAGE_MIN_SIDE=0 : aucune image retirée pour sa taille ; l'icône sans nom de type inconnu
+    redevient une pièce non prise en charge."""
+    from email import message_from_bytes, policy
+
+    monkeypatch.setenv("MAIL_IMAGE_MIN_SIDE", "0")
+    msg = message_from_bytes(make_mail(), policy=policy.default)
+    msg.get_body(("html",)).add_related(_png(64, 64), maintype="application", subtype="octet-stream", cid="<icone@example.com>")
+    rt = runtime(Settings.from_env(), msg.as_bytes())
+    status, _ = run_chain(rt, "lot1/mail.eml")
+    assert status == "quarantine"
 
 
 def test_queue_sender_sends_all_messages_in_batches(monkeypatch):

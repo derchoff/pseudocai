@@ -57,6 +57,21 @@ def image_size(data: bytes, fmt: str) -> tuple[int, int] | None:
         return None
 
 
+def sniff_size(data: bytes) -> tuple[int, int] | None:
+    """Dimensions d'une image de format quelconque (reconnu par ses premiers octets, GIF compris),
+    lues dans l'en-tête sans la décoder ; None si ce n'est pas une image lisible."""
+    try:
+        with _pil().open(io.BytesIO(data)) as img:
+            return img.size
+    except Exception:  # noqa: BLE001 - pas une image (PDF, Word…) ou image illisible
+        return None
+
+
+def is_gif(data: bytes) -> bool:
+    """Vrai si les octets sont ceux d'une image GIF."""
+    return data[:6] in (b"GIF87a", b"GIF89a")
+
+
 def decode(data: bytes, fmt: str, max_pixels: int) -> DecodedImage:
     """Décode une image en n'acceptant que le format annoncé par son extension.
 

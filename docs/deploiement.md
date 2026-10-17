@@ -169,6 +169,7 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 | `function_max_instances` | `10` | App principale : limite la parallélisation, et donc la charge sur Azure OpenAI. |
 | `function_instance_memory_mb` | `2048` | App principale : les gros PDF scannés demandent de la mémoire (rastérisation). |
 | `enable_mail_processing` | `false` | Active les mails `.eml` : un dossier pseudonymisé par mail (voir [architecture](architecture.md#mails-eml)). Les pièces jointes images demandent aussi `enable_image_processing`. |
+| `mail_image_min_side` | `300` | Mails : une image de moins de ce nombre de pixels sur un côté (logo, icône de signature) est retirée du mail au lieu de le bloquer, quel que soit son format. Les GIF sont toujours retirés. `0` : aucune image retirée pour sa taille. |
 | `enable_image_processing` | `false` | Active le traitement des images (voir [Activer les images](#activer-le-traitement-des-images)). |
 | `image_extensions` | `.jpg .jpeg .png .heic .heif .tif .tiff .webp .bmp` | Extensions d'images acceptées (filtre Event Grid et routeur). Le format est déduit de l'extension ; un contenu non conforme part en quarantaine. |
 | `image_function_max_instances` | `5` | App images : parallélisation de la préparation. |
@@ -212,6 +213,7 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 | `QUARANTINE_ON_UNLOCATED` | true | Quarantaine si une entité signalée par un agent est introuvable dans le texte. |
 | `LANGUAGE_PII_CATEGORIES` | `Person:PERSONNE,...` | Correspondance entre les catégories Azure AI Language et les types internes. |
 | `PROMPT_CACHE_SECONDS` | 300 | Délai de rechargement des prompts. |
+| `MAIL_IMAGE_MIN_SIDE` | 300 | Posé par la variable `mail_image_min_side` (ne pas le passer dans `pipeline_settings`). Une image d'un mail plus petite sur un côté est retirée, quel que soit son format. |
 | `MAIL_MAX_ATTACHMENTS` | 20 | Au-delà, le mail entier part en quarantaine (`trop_de_pieces_jointes`). |
 | `PSEUDO_OUTPUT_MODE` | substitution | Posé par la variable `pseudo_output_mode` (ne pas le passer dans `pipeline_settings`). |
 | `HANDWRITING_POLICY` | quarantaine | Posé par la variable `handwriting_policy` (ne pas le passer dans `pipeline_settings`). |

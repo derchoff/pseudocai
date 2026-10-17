@@ -243,6 +243,17 @@ variable "enable_mail_processing" {
   default     = false
 }
 
+variable "mail_image_min_side" {
+  description = "Mails : une image de moins de ce nombre de pixels sur un côté (logo, icône de signature) est retirée du mail, quel que soit son format. Les GIF sont toujours retirés."
+  type        = number
+  default     = 300
+
+  validation {
+    condition     = var.mail_image_min_side >= 0
+    error_message = "mail_image_min_side doit être positif ou nul (0 = aucune image retirée pour sa taille)."
+  }
+}
+
 variable "enable_image_processing" {
   description = "Active le traitement des images (photos, scans JPEG/PNG/HEIC/TIFF...) : app images, filtre Event Grid."
   type        = bool

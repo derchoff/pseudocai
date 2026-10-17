@@ -22,6 +22,7 @@ locals {
     DELETE_SOURCE_AFTER_SUCCESS = tostring(var.delete_source_after_success)
     IMAGE_PROCESSING_ENABLED    = tostring(var.enable_image_processing)
     MAIL_PROCESSING_ENABLED     = tostring(var.enable_mail_processing)
+    MAIL_IMAGE_MIN_SIDE         = tostring(var.mail_image_min_side)
     IMAGE_EXTENSIONS            = join(",", var.image_extensions)
 
     COSMOS_ENDPOINT          = azurerm_cosmosdb_account.main.endpoint

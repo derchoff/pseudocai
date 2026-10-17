@@ -36,6 +36,7 @@ class Attachment:
     fmt: str | None  # format déduit du nom ; None = non pris en charge
     data: bytes
     content_id: str | None = None  # référence « cid: » dans le corps HTML
+    content_type: str = ""  # type MIME déclaré (image/gif, application/octet-stream…)
 
 
 @dataclass
@@ -89,7 +90,9 @@ def parse_eml(data: bytes) -> ParsedMail:
         index = len(mail.attachments) + 1
         filename = part.get_filename() or _generated_name(index, part.get_content_type())
         content_id = (part.get("content-id") or "").strip().strip("<>") or None
-        mail.attachments.append(Attachment(index, posixpath.basename(filename), format_from_name(filename), payload, content_id))
+        mail.attachments.append(Attachment(
+            index, posixpath.basename(filename), format_from_name(filename), payload, content_id, part.get_content_type()
+        ))
     return mail
 
 

@@ -1,7 +1,9 @@
 """Découpage d'un mail (file « mail-jobs », app principale).
 
-1. Lecture du .eml. Une image INTÉGRÉE au corps trop petite pour être lue (logo, icône de signature)
-   est retirée du résultat. Pièce non prise en charge (Word, ZIP, mail joint…), image alors que les
+1. Lecture du .eml. Sont retirées du résultat, sans quarantaine : les GIF (illisibles par l'OCR),
+   les images de moins de MAIL_IMAGE_MIN_SIDE pixels sur un côté, quels que soient leur format et leur
+   type déclaré (logos, icônes de signature), et les images INTÉGRÉES au corps trop petites pour être
+   lues (sous IMAGE_MIN_SHORT_SIDE). Pièce non prise en charge (Word, ZIP, mail joint…), image alors que les
    images sont désactivées, ou trop de pièces : le mail entier part en quarantaine, sans appel aux
    agents IA.
 2. En-têtes, objet, noms des pièces et corps pseudonymisés en un seul passage (document.py).
@@ -18,7 +20,7 @@ import uuid
 from datetime import datetime
 
 from ..formats import PDF, is_image
-from ..image_codec import image_size
+from ..image_codec import image_size, is_gif, sniff_size
 from ..jobs import ORIGIN_IMAGE, ORIGIN_PDF, Job
 from ..outputs import job_source_blob, previous_trace
 from ..pipeline import PipelineInput, run_pipeline
@@ -52,7 +54,7 @@ def handle_mail_job(body: bytes | str, runtime) -> list[tuple[str, str]]:
         quarantine_mail(runtime, job, original, _fallback_folder(job), ["mail_illisible"], {}, None, previous)
         return []
     folder = mail_folder(mail, job, runtime.services.pseudonymizer)
-    removed = _drop_small_inline_images(mail, settings)
+    removed = _drop_unusable_images(mail, settings)
     refused = _refusals(mail, settings)
     if refused:
         reasons, detail = refused
@@ -103,7 +105,7 @@ def handle_mail_job(body: bytes | str, runtime) -> list[tuple[str, str]]:
             "file": body_file,
             "content_type": "text/html; charset=utf-8" if html is not None else "text/plain; charset=utf-8",
             "reasons": result.reasons,
-            "report": {**result.report, "images_integrees_retirees": removed},
+            "report": {**result.report, "images_retirees": removed},
             "occurrences": occurrences,
         },
     })
@@ -121,14 +123,27 @@ def mail_folder(mail: ParsedMail, job: Job, pseudonymizer) -> str:
     return f"mail-{date:%Y%m%d}-{pseudonymizer.fingerprint('MAIL', key, 'texte')[:8]}"
 
 
-def _drop_small_inline_images(mail: ParsedMail, settings) -> int:
-    """Retire les images intégrées au corps trop petites pour être lues (logos, icônes) : elles ne
-    sont pas publiées et leur référence disparaît du HTML. Renvoie leur nombre."""
-    kept, removed = [], 0
+def _drop_unusable_images(mail: ParsedMail, settings) -> dict[str, int]:
+    """Retire les images d'un mail inutiles ou illisibles par l'OCR : elles ne sont ni traitées ni
+    publiées, et leur référence disparaît du HTML. Renvoie leur nombre par raison :
+
+    - gif : toute image GIF (nom, type MIME ou contenu), que l'OCR ne lit pas ;
+    - trop_petites : toute image de moins de MAIL_IMAGE_MIN_SIDE pixels sur un côté, quels que soient
+      son format et son type déclaré (une icône envoyée en application/octet-stream sans nom compris) ;
+    - integrees_illisibles : image intégrée au corps sous IMAGE_MIN_SHORT_SIDE (logo, bandeau).
+    """
+    kept: list = []
+    removed = {"gif": 0, "trop_petites": 0, "integrees_illisibles": 0}
     for a in mail.attachments:
-        size = image_size(a.data, a.fmt) if a.content_id and is_image(a.fmt) else None
-        if size is not None and min(size) < settings.image_min_short_side:
-            removed += 1
+        if a.filename.lower().endswith(".gif") or a.content_type == "image/gif" or is_gif(a.data):
+            removed["gif"] += 1
+            continue
+        size = image_size(a.data, a.fmt) if is_image(a.fmt) else sniff_size(a.data)
+        if size is not None and min(size) < settings.mail_image_min_side:
+            removed["trop_petites"] += 1
+            continue
+        if size is not None and a.content_id and is_image(a.fmt) and min(size) < settings.image_min_short_side:
+            removed["integrees_illisibles"] += 1
             continue
         kept.append(a)
     mail.attachments = kept

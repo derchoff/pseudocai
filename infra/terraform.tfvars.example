@@ -40,6 +40,7 @@ work_retention_days         = 1
 quarantine_retention_days   = 30
 
 # Mails .eml : un dossier pseudonymisé par mail (corps, en-têtes, pièces jointes)
+mail_image_min_side    = 300 # images de mail plus petites sur un côté : retirées (logos, icônes)
 enable_mail_processing = true
 
 # Images (photos, scans) : crée l'app images et ajoute les extensions au filtre Event Grid

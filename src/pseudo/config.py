@@ -152,6 +152,7 @@ class Settings:
     # Mails (.eml) : corps, en-têtes et pièces jointes pseudonymisés, rangés dans un dossier par mail
     mail_processing_enabled: bool
     mail_max_attachments: int
+    mail_image_min_side: int  # image d'un mail plus petite sur un côté : retirée (logo, icône)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -234,4 +235,5 @@ class Settings:
             image_output_quality=_int("IMAGE_OUTPUT_QUALITY", 90),
             mail_processing_enabled=_bool("MAIL_PROCESSING_ENABLED", False),
             mail_max_attachments=_int("MAIL_MAX_ATTACHMENTS", 20),
+            mail_image_min_side=_int("MAIL_IMAGE_MIN_SIDE", 300),
         )
