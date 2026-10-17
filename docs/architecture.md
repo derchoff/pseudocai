@@ -584,6 +584,7 @@ pseudonymised/
 ├── carte-grise/
 ├── acte-naissance/
 ├── acte-deces/
+├── bia/
 └── non-classe/
 quarantine/
 ├── dentaire/       <chemin>.<ext> (original) · <chemin>.<ext>.motif.json

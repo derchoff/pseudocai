@@ -116,3 +116,16 @@ actes, les codes de facturation et le vocabulaire.
   (→ `ACTE_NAISSANCE`) ; facture de pompes funèbres, certificat médical de décès sans acte
   d'état civil, courrier d'une caisse ou d'un assureur annonçant un décès (→ `NON_CLASSE` tant
   qu'aucun type dédié n'existe).
+
+## BIA — Bulletin individuel d'affiliation
+
+- **Dossier** : bia
+- **Indices** : « Bulletin individuel d'affiliation », « BIA » ; formulaire d'**affiliation** d'un
+  salarié (ou d'un adhérent) à un contrat de complémentaire santé ou de prévoyance, souvent
+  collectif (entreprise, branche) ; rubriques sur l'adhérent, l'employeur, la date d'effet ;
+  choix de la formule ou du niveau de couverture, **garanties optionnelles** ; liste des
+  **ayants droit** (conjoint, concubin, partenaire de PACS, enfants à charge) ; rattachement à la
+  Sécurité sociale, télétransmission (NOEMIE) ; signature et date de l'adhérent.
+- **Ne pas confondre** : carte de tiers payant ou attestation d'adhésion déjà émise par
+  l'organisme, demande de radiation ou de résiliation, conditions générales ou notice d'un contrat
+  sans formulaire rempli (→ `NON_CLASSE` tant qu'aucun type dédié n'existe).

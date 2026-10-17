@@ -9,7 +9,13 @@ Parcourt tous les sous-dossiers, lit chaque motif.json (mail) et *.motif.json (d
 - Pièces non prises en charge : pour chaque pièce refusée d'un mail, sa structure MIME
   (type, disposition, nom, taille, format réel reconnu par ses premiers octets) ;
 - OCR faible : confiance OCR de chaque page lue par OCR, la plus basse d'abord. Les pièces d'un mail
-  concernées sont extraites dans <dossier du mail>/pieces_ocr_faible/ pour être ouvertes directement.
+  concernées sont extraites dans <dossier du mail>/pieces_ocr_faible/ pour être ouvertes directement ;
+- Échecs de localisation : chaque valeur signalée par un agent mais introuvable dans le texte
+  (diagnostic.localisation des rapports), avec sa cause probable et le correctif à envisager ;
+- Résidus de vérification : chaque donnée signalée par l'agent vérificateur, tour par tour
+  (diagnostic.verification), pour comprendre residus_apres_verification.
+Les onglets Échecs et Résidus demandent des rapports produits avec REPORT_DETAIL=diagnostic (défaut).
+Aucune valeur détectée n'y figure : seulement des types, des numéros de ligne et des indicateurs.
 
 Les fichiers lus et produits contiennent des données réelles : ils restent sur le poste.
 """
@@ -82,6 +88,41 @@ def ocr_pages(report: dict) -> list[tuple[int, float | None, int | None]]:
     return [(p, None, None) for p in report.get("pages_ocr_faible_confiance", [])]
 
 
+# Cause probable d'un échec de localisation -> correctif à envisager
+CAUSES = {
+    "valeur coupée sur 2 lignes": "Prompt : un fragment par ligne avec le même group (règle 7) ; ou recherche sur 2 lignes jointes dans le code",
+    "accents ou ponctuation modifiés": "Insister sur la copie exacte dans le prompt ; ou ignorer accents, apostrophes et ponctuation dans la recherche",
+    "numéro de ligne inconnu": "Réduire LLM_CHUNK_CHARS (blocs plus courts)",
+    "valeur légèrement modifiée": "Baisser FUZZY_MIN_SCORE (ex. 80)",
+    "valeur transformée ou inventée": "Exemples dans le référentiel des champs (date convertie en chiffres, nom reconstitué…)",
+}
+
+
+def failure_cause(e: dict) -> str:
+    """Cause probable d'un échec, d'après les indicateurs du diagnostic (voir docs/exploitation.md)."""
+    if e.get("trouvee_sur_2_lignes"):
+        return "valeur coupée sur 2 lignes"
+    if e.get("trouvee_sans_accents_ponctuation"):
+        return "accents ou ponctuation modifiés"
+    if e.get("ligne_connue") is False:
+        return "numéro de ligne inconnu"
+    if max(e.get("meilleur_score_ligne") or 0, e.get("meilleur_score_document") or 0) >= 75:
+        return "valeur légèrement modifiée"
+    return "valeur transformée ou inventée"
+
+
+def pipeline_reports(report: dict, is_mail: bool, original: Path | None):
+    """Rapports du pipeline d'un motif : (partie, rapport, motifs de la partie). Un mail en a un pour
+    son corps et un par pièce jointe ; un document, un seul."""
+    if not is_mail:
+        yield (original.name if original else "document"), report, report.get("motifs") or []
+        return
+    if report.get("corps"):
+        yield "corps du mail", report["corps"], report["corps"].get("motifs") or []
+    for a in report.get("pieces_jointes") or []:
+        yield f"pièce : {a.get('fichier')}", a.get("rapport") or {}, a.get("motifs") or []
+
+
 def safe_name(name: str) -> str:
     """Nom de fichier utilisable sous Windows."""
     return "".join("_" if c in '<>:"/\\|?*' or ord(c) < 32 else c for c in name).strip() or "piece"
@@ -89,7 +130,8 @@ def safe_name(name: str) -> str:
 
 def main(base: Path) -> None:
     """Lit tous les motifs sous base et écrit la synthèse Excel."""
-    detail, refused, ocr = [], [], []
+    detail, refused, ocr, failures, residues = [], [], [], [], []
+    without_diagnostic = 0
     for jp in sorted(base.rglob("*.json")):
         try:
             data = json.loads(jp.read_text(encoding="utf-8-sig"))
@@ -162,8 +204,46 @@ def main(base: Path) -> None:
                         "faible": low, "ouvrir": target,
                     })
 
-    write_workbook(base / "synthese-quarantaine.xlsx", detail, refused, ocr)
-    print(f"{len(detail)} motif(s), {len(refused)} pièce(s) refusée(s), {len(ocr)} page(s) OCR -> {base / 'synthese-quarantaine.xlsx'}")
+        # 3 et 4. Échecs de localisation et résidus de vérification (diagnostic des rapports)
+        for partie, part_report, part_motifs in pipeline_reports(report, is_mail, original):
+            diag = part_report.get("diagnostic")
+            if not diag:
+                if "entites_non_localisees" in part_motifs or "residus_apres_verification" in part_motifs:
+                    without_diagnostic += 1
+                continue
+            where = {"type": type_folder, "dossier": str(rel), "fichier": original, "partie": partie,
+                     "motifs_partie": ", ".join(part_motifs)}
+            rounds = diag.get("verification") or []
+            steps = [("détection", diag.get("localisation") or {})]
+            steps += [(f"vérification tour {t.get('tour')}", t.get("localisation") or {}) for t in rounds]
+            for step, loc in steps:
+                for e in loc.get("echecs") or []:
+                    cause = failure_cause(e)
+                    failures.append({
+                        **where, "etape": step, "champ": e.get("type"), "source": e.get("source"),
+                        "ligne": e.get("ligne"), "ligne_connue": e.get("ligne_connue"), "longueur": e.get("longueur"),
+                        "mots": e.get("mots"), "score_ligne": e.get("meilleur_score_ligne"),
+                        "score_doc": e.get("meilleur_score_document"), "deux_lignes": e.get("trouvee_sur_2_lignes"),
+                        "accents": e.get("trouvee_sans_accents_ponctuation"), "cause": cause, "correctif": CAUSES[cause],
+                    })
+            for t in rounds:
+                last = t.get("tour") == len(rounds)
+                common = {**where, "tour": t.get("tour"), "tours": len(rounds), "dernier": "oui" if last else "non",
+                          "nouveau": "oui" if t.get("a_trouve_du_nouveau") else "non",
+                          "caracteres": t.get("nouveaux_caracteres_masques"),
+                          "non_convergee": "oui" if last and t.get("a_trouve_du_nouveau") else "non"}
+                items = t.get("residus") or []
+                if not items:
+                    residues.append({**common, "champ": "(aucun)", "ligne": None})
+                for r in items:
+                    residues.append({**common, "champ": r.get("type"), "ligne": r.get("ligne")})
+
+    write_workbook(base / "synthese-quarantaine.xlsx", detail, refused, ocr, failures, residues, without_diagnostic)
+    print(f"{len(detail)} motif(s), {len(refused)} pièce(s) refusée(s), {len(ocr)} page(s) OCR, "
+          f"{len(failures)} échec(s) de localisation, {len(residues)} ligne(s) de résidus "
+          f"-> {base / 'synthese-quarantaine.xlsx'}")
+    if without_diagnostic:
+        print(f"{without_diagnostic} rapport(s) concerné(s) sans section diagnostic (produits avant REPORT_DETAIL)")
 
 
 # --------------------------------------------------------------------------- Excel
@@ -193,8 +273,10 @@ def table(ws, row: int, headers: list[str], rows: list[list], widths: list[int] 
     return row + len(rows) + 2
 
 
-def write_workbook(path: Path, detail: list[dict], refused: list[dict], ocr: list[dict]) -> None:
-    """Classeur : Synthèse (formules sur l'onglet Détail), Détail, Pièces non prises en charge, OCR faible."""
+def write_workbook(path: Path, detail: list[dict], refused: list[dict], ocr: list[dict],
+                   failures: list[dict], residues: list[dict], without_diagnostic: int) -> None:
+    """Classeur : Synthèse (formules sur les autres onglets), Détail, Pièces non prises en charge,
+    OCR faible, Échecs de localisation, Résidus de vérification."""
     wb = Workbook()
     ws = wb.active
     ws.title = "Synthèse"
@@ -230,6 +312,31 @@ def write_workbook(path: Path, detail: list[dict], refused: list[dict], ocr: lis
     o.freeze_panes = "A2"
     o.auto_filter.ref = f"A1:I{len(ocr) + 1}"
     no = len(ocr) + 1
+
+    f = wb.create_sheet("Échecs de localisation")
+    failures.sort(key=lambda x: (x["cause"], x["champ"] or "", x["dossier"]))
+    table(f, 1, ["Dossier de type", "Dossier", "Fichier", "Partie", "Étape", "Type de champ", "Agent", "Ligne",
+                 "Ligne connue", "Longueur", "Mots", "Score ligne", "Score document", "Trouvée sur 2 lignes",
+                 "Trouvée sans accents/ponctuation", "Cause probable", "Correctif à envisager", "Motifs de la partie"],
+          [[x["type"], x["dossier"], x["fichier"], x["partie"], x["etape"], x["champ"], x["source"], x["ligne"],
+            _yes(x["ligne_connue"]), x["longueur"], x["mots"], x["score_ligne"], x["score_doc"], _yes(x["deux_lignes"]),
+            _yes(x["accents"]), x["cause"], x["correctif"], x["motifs_partie"]] for x in failures],
+          [14, 30, 40, 30, 18, 16, 9, 9, 9, 9, 7, 9, 10, 10, 12, 30, 60, 30])
+    f.freeze_panes = "A2"
+    f.auto_filter.ref = f"A1:R{len(failures) + 1}"
+    nf = max(len(failures) + 1, 2)
+
+    v = wb.create_sheet("Résidus de vérification")
+    residues.sort(key=lambda x: (x["dossier"], x["partie"], x["tour"] or 0))
+    table(v, 1, ["Dossier de type", "Dossier", "Fichier", "Partie", "Tour", "Tours effectués", "Dernier tour",
+                 "Type de champ", "Ligne", "Le tour a trouvé du nouveau", "Caractères masqués en plus",
+                 "Non convergé (dernier tour encore du nouveau)", "Motifs de la partie"],
+          [[x["type"], x["dossier"], x["fichier"], x["partie"], x["tour"], x["tours"], x["dernier"], x["champ"],
+            x["ligne"], x["nouveau"], x["caracteres"], x["non_convergee"], x["motifs_partie"]] for x in residues],
+          [14, 30, 40, 30, 6, 9, 9, 16, 9, 12, 12, 16, 30])
+    v.freeze_panes = "A2"
+    v.auto_filter.ref = f"A1:M{len(residues) + 1}"
+    nv = max(len(residues) + 1, 2)
 
     # Synthèse : uniquement des formules sur les onglets de détail
     ws["A1"] = "Synthèse des mises en quarantaine"
@@ -276,8 +383,43 @@ def write_workbook(path: Path, detail: list[dict], refused: list[dict], ocr: lis
                 ["Pages sous le seuil", f"=COUNTIFS({flag},\"oui\")"],
                 ["Pages entre 0,70 et le seuil", f"=COUNTIFS({rng},\">=0.7\",{rng},\"<{OCR_THRESHOLD}\",{flag},\"oui\")"],
                 ["Pages sans texte (ignorées par le motif)", f"=COUNTIFS({flag},\"page sans texte\")"]]
-        table(ws, row + 1, ["Indicateur", "Valeur"], rows)
+        row = table(ws, row + 1, ["Indicateur", "Valeur"], rows)
+
+    # Échecs de localisation : par cause, et par cause et type de champ
+    ech = "'Échecs de localisation'"
+    ws.cell(row, 1, "Échecs de localisation, par cause probable").font = TITLE
+    rows = [[c, f'=COUNTIFS({ech}!$P$2:$P${nf},"{c}")', CAUSES[c]] for c in CAUSES]
+    rows.append(["Total", f"=COUNTA({ech}!$P$2:$P${nf})", None])
+    row = table(ws, row + 1, ["Cause probable", "Échecs", "Correctif à envisager"], rows)
+    champs = sorted({x["champ"] for x in failures if x["champ"]})
+    if champs:
+        ws.cell(row, 1, "Échecs de localisation, par cause et type de champ").font = TITLE
+        rows = [[c] + [f'=COUNTIFS({ech}!$P$2:$P${nf},"{c}",{ech}!$F$2:$F${nf},"{t}")' for t in champs] for c in CAUSES]
+        row = table(ws, row + 1, ["Cause probable"] + champs, rows)
+
+    # Résidus de vérification : par tour et par type de champ
+    res = "'Résidus de vérification'"
+    ws.cell(row, 1, "Résidus de vérification").font = TITLE
+    tours = sorted({x["tour"] for x in residues if x["tour"]})
+    rows = [[f"Tour {t}",
+             f'=COUNTIFS({res}!$E$2:$E${nv},{t},{res}!$H$2:$H${nv},"<>(aucun)")',
+             f'=COUNTIFS({res}!$E$2:$E${nv},{t},{res}!$G$2:$G${nv},"oui",{res}!$L$2:$L${nv},"oui",{res}!$H$2:$H${nv},"<>(aucun)")']
+            for t in tours]
+    row = table(ws, row + 1, ["Tour", "Résidus signalés", "dont au dernier tour d'une partie non convergée"], rows)
+    types_res = sorted({x["champ"] for x in residues if x["champ"] and x["champ"] != "(aucun)"})
+    if types_res:
+        rows = [[t, f'=COUNTIFS({res}!$H$2:$H${nv},"{t}")',
+                 f'=COUNTIFS({res}!$H$2:$H${nv},"{t}",{res}!$L$2:$L${nv},"oui")'] for t in types_res]
+        row = table(ws, row, ["Type de champ", "Résidus (tous tours)", "dont au dernier tour d'une partie non convergée"], rows)
+    if without_diagnostic:
+        ws.cell(row, 1, f"{without_diagnostic} rapport(s) en entites_non_localisees ou residus_apres_verification "
+                        "sans section diagnostic (produits avant REPORT_DETAIL=diagnostic) : absents de ces tableaux.").font = FONT
     wb.save(path)
+
+
+def _yes(value) -> str | None:
+    """oui / non / vide pour un booléen du diagnostic."""
+    return None if value is None else ("oui" if value else "non")
 
 
 if __name__ == "__main__":
