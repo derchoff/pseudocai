@@ -91,9 +91,11 @@ def test_mail_is_published_as_one_folder(settings):
     folder = folder.pop()
     assert re.fullmatch(r"dentaire/mail-20261014-[0-9a-f]{8}", folder)
     names = {n.rsplit("/", 1)[1] for n in files}
-    assert {"mail.json", "body.html", "rapport.json"} <= names and len(names) == 4
+    assert {"mail.json", "body.html", "body.pseudonymise.txt", "rapport.json"} <= names and len(names) == 6
     attachment = next(n for n in names if n.endswith(".pdf"))
     assert "DUPONT" not in attachment and "Jean" not in attachment  # nom du fichier pseudonymisé
+    # Comme pour un document seul : texte pseudonymisé de la pièce, à côté d'elle.
+    assert attachment.removesuffix(".pdf") + ".pseudonymise.txt" in names
 
     # Aucune donnée d'origine nulle part (corps, en-têtes, pièce jointe, rapport).
     import pymupdf
@@ -138,7 +140,7 @@ def test_mail_without_attachment_has_only_body(settings):
     status, _ = run_chain(rt, "lot1/mail.eml")
     assert status == "ok"
     names = {n.rsplit("/", 1)[1] for n in published(rt)}
-    assert names == {"mail.json", "body.txt", "rapport.json"}
+    assert names == {"mail.json", "body.txt", "body.pseudonymise.txt", "rapport.json"}
 
 
 def test_unsupported_attachment_sends_whole_mail_to_quarantine_without_ai(settings):
@@ -334,3 +336,26 @@ def test_queue_sender_sends_all_messages_in_batches(monkeypatch):
     assert sent == [["a", "b"], ["c", "d"], ["e"]]
     QueueSender("sb.servicebus.windows.net", credential=None).send("pdf-jobs", [])
     assert len(sent) == 3  # rien à envoyer : aucun lot
+
+
+def test_text_versions_of_body_and_attachments_are_published(settings):
+    """body.pseudonymise.txt (corps en texte brut, même pour un mail HTML) et <pièce>.pseudonymise.txt."""
+    rt = runtime(settings, make_mail())
+    assert run_chain(rt, "lot1/mail.eml")[0] == "ok"
+    files = published(rt)
+    body = next(v for k, v in files.items() if k.endswith("/body.pseudonymise.txt")).decode("utf-8")
+    assert "<" not in body and "Bonjour," in body and "Ci-joint la facture de" in body  # texte brut, sans balises
+    assert "alert" not in body  # le script retiré du HTML n'y revient pas
+    part = next(v for k, v in files.items() if k.endswith(".pseudonymise.txt") and "/body." not in k).decode("utf-8")
+    assert "Attestation" in part and "===== Page 1 =====" in part  # même format que pour un document seul
+    for text in (body, part):
+        for secret in SECRETS:
+            assert secret not in text
+
+
+def test_text_names_do_not_collide():
+    from pseudo.mails.finalize import _text_name
+
+    used = {"mail.json", "rapport.json"}
+    assert _text_name("facture.pdf", used) == "facture.pseudonymise.txt"
+    assert _text_name("facture.jpg", used) == "facture.jpg.pseudonymise.txt"

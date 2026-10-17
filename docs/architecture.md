@@ -274,7 +274,9 @@ unique et sans donnée personnelle, rangé comme les autres documents par type :
 pseudonymised/<type>/mail-<date>-<empreinte>/
 ├── mail.json        expéditeur, destinataires, date, objet : pseudonymisés
 ├── body.html        corps pseudonymisé (body.txt si le mail n'a pas de version HTML)
+├── body.pseudonymise.txt   corps en texte brut, sans balises, même pour un mail HTML
 ├── <pièces jointes> pseudonymisées, nom de fichier compris (facture_DUPONT.pdf -> facture_MEYER.pdf)
+├── <pièce>.pseudonymise.txt  texte de chaque pièce, comme pour un document seul
 └── rapport.json     classement, rapport du corps et de chaque pièce
 quarantine/<type>/mail-<date>-<empreinte>/
 ├── <mail d'origine>.eml
@@ -283,7 +285,16 @@ quarantine/<type>/mail-<date>-<empreinte>/
 
 L'empreinte est calculée avec la clé HMAC à partir du `Message-ID` : un même mail retraité
 retombe dans le même dossier, qui est remplacé. Un mail sans pièce jointe donne un dossier avec
-`mail.json`, `body.*` et `rapport.json`.
+`mail.json`, `body.*`, `body.pseudonymise.txt` et `rapport.json`.
+
+Les fichiers `.pseudonymise.txt` contiennent le texte publié (valeurs fictives, ou jetons en mode
+`jetons`), sans mise en forme : ils servent à l'analyse du contenu, par exemple pour entraîner un
+classifieur. Le texte d'une pièce a le même format que celui d'un document seul (`===== Page 1 =====`
+puis les lignes) ; il s'appelle `<nom sans extension>.pseudonymise.txt`, ou
+`<nom complet>.pseudonymise.txt` si deux pièces ne diffèrent que par l'extension
+(`facture.pdf`, `facture.jpg`). Comme pour un document seul, ces textes ne sont pas indexés
+séparément dans Cosmos DB `occurrences` : leurs valeurs fictives sont celles du fichier qu'ils
+accompagnent.
 
 ```mermaid
 flowchart LR

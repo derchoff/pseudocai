@@ -29,9 +29,10 @@ from .document import build_mail_text, read_back
 from .finalize import quarantine_mail, try_finalize
 from .html_body import HtmlBody
 from .parse import MailParseError, ParsedMail, parse_eml
-from .workspace import MailWorkspace
+from .workspace import BODY_TEXT_FILE, MailWorkspace
 
 log = logging.getLogger(__name__)
+
 
 
 def handle_mail_job(body: bytes | str, runtime) -> list[tuple[str, str]]:
@@ -76,6 +77,7 @@ def handle_mail_job(body: bytes | str, runtime) -> list[tuple[str, str]]:
     body_file = "body.html" if html is not None else "body.txt"
     ws.put("text/body.txt", result.token_text or "")
     ws.put(f"out/{body_file}", pseudo.body)
+    ws.put(f"out/{BODY_TEXT_FILE}", pseudo.body_text)
     ws.put_json("out/mail.json", _mail_json(mail, folder, pseudo, body_file))
     header_lines = set(built.prefixes)
     occurrences = [

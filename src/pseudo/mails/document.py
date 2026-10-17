@@ -79,6 +79,7 @@ class PseudonymisedMail:
     subject: str
     filenames: dict[int, str]  # n° de pièce -> nom de fichier final (extension d'origine)
     body: str  # corps reconstruit (HTML ou texte)
+    body_text: str = ""  # corps en texte brut, sans balises (body.pseudonymise.txt)
 
 
 def read_back(
@@ -101,9 +102,12 @@ def read_back(
             a.content_id: filenames[a.index] for a in mail.attachments if a.content_id
         }
         body = html.render({key: pseudo[i] for i, key in built.html_keys.items()}, cids)
+        # Texte brut : les fragments de texte du HTML, dans l'ordre, un par ligne.
+        body_text = "\n".join(pseudo[i] for i in built.html_keys)
     else:
         body = "\n".join(pseudo[i] if i else text for i, text in built.body_lines)
-    return PseudonymisedMail(headers=headers, subject=subject, filenames=filenames, body=body)
+        body_text = body
+    return PseudonymisedMail(headers=headers, subject=subject, filenames=filenames, body=body, body_text=body_text)
 
 
 def final_filenames(mail: ParsedMail, stems: dict[int, str]) -> dict[int, str]:

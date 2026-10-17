@@ -19,6 +19,9 @@ from datetime import datetime, timezone
 from ..outputs import StorageContext
 
 
+BODY_TEXT_FILE = "body.pseudonymise.txt"  # corps en texte brut, publié avec le mail
+
+
 class MailWorkspace:
     """Accès aux fichiers de travail d'un mail."""
 

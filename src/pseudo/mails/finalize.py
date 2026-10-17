@@ -1,7 +1,8 @@
 """Finalisation d'un mail, quand toutes ses pièces sont terminées : classement de l'ensemble puis
 publication du dossier, ou quarantaine du mail entier (tout ou rien).
 
-    pseudonymised/<type>/mail-<date>-<empreinte>/   mail.json · body.html|txt · pièces · rapport.json
+    pseudonymised/<type>/mail-<date>-<empreinte>/   mail.json · body.html|txt · body.pseudonymise.txt ·
+                                                    pièces et <pièce>.pseudonymise.txt · rapport.json
     quarantine/<type>/mail-<date>-<empreinte>/      <mail d'origine>.eml · motif.json
 
 Chaque tâche qui termine une pièce appelle try_finalize. Seule celle qui voit toutes les pièces
@@ -30,7 +31,7 @@ from ..outputs import (
     previous_trace,
 )
 from ..pipeline import classify_text
-from .workspace import MailWorkspace
+from .workspace import BODY_TEXT_FILE, MailWorkspace
 
 log = logging.getLogger(__name__)
 
@@ -96,8 +97,15 @@ def _publish(runtime, ws, job: Job, state: dict, markers: dict, report: dict, cl
         OutputFile(f"{folder}/mail.json", ws.get("out/mail.json"), "application/json"),
         OutputFile(f"{folder}/{state['body']['file']}", ws.get(f"out/{state['body']['file']}"), state["body"]["content_type"]),
     ]
+    text_type = "text/plain; charset=utf-8"
+    if ws.exists(f"out/{BODY_TEXT_FILE}"):  # absent pour un mail découpé par une version précédente
+        files.append(OutputFile(f"{folder}/{BODY_TEXT_FILE}", ws.get(f"out/{BODY_TEXT_FILE}"), text_type))
+    used = {f.name.rsplit("/", 1)[1] for f in files} | {"rapport.json"} | {p["name"] for p in state["parts"]}
     for part in state["parts"]:
         files.append(OutputFile(f"{folder}/{part['name']}", ws.get(f"out/{part['name']}"), CONTENT_TYPES[part["format"]]))
+        if ws.exists(f"text/{part['index']}.publie.txt"):
+            name = _text_name(part["name"], used)
+            files.append(OutputFile(f"{folder}/{name}", ws.get(f"text/{part['index']}.publie.txt"), text_type))
     files.append(OutputFile(f"{folder}/rapport.json", _json(report), "application/json"))
     outputs = _write(runtime, settings.output_container, files, classification)
 
@@ -154,6 +162,17 @@ def quarantine_mail(
     _finish(ctx, job, "quarantine", {**report, "motifs": reasons}, classification, outputs, previous, STAGE_MAIL)
     log.warning("Mail en quarantaine doc=%s type=%s motifs=%s", job.document_id, classification.principal, reasons)
     return outputs
+
+
+def _text_name(part_name: str, used: set[str]) -> str:
+    """Nom du texte d'une pièce : « facture.pseudonymise.txt », comme pour un document seul ; si
+    deux pièces ont le même nom sans extension (facture.pdf, facture.jpg), le nom complet sert."""
+    stem, _ = posixpath.splitext(part_name)
+    name = f"{stem}.pseudonymise.txt"
+    if name in used:
+        name = f"{part_name}.pseudonymise.txt"
+    used.add(name)
+    return name
 
 
 def _without_classification(report: dict) -> dict:
