@@ -4,6 +4,7 @@ Chaque traitement écrit une **fiche** dans le container Cosmos DB `statistiques
 [`scripts/statistiques.py`](../scripts/statistiques.py) en tire, sur une période :
 
 - les **pages traitées** et les pages par document (mails et pièces jointes compris, quarantaine comprise) ;
+- les pages **réellement passées par l'OCR** et **par les agents IA** ;
 - le **pourcentage de mise en quarantaine** ;
 - la répartition **par type** de document et par **type MIME** ;
 - les **tours de vérification** ;
@@ -46,6 +47,7 @@ décrit la tentative qui aboutit : la consommation d'une tentative en échec n'y
   "residus": false,              // true = encore des résidus après le dernier tour
   "consommation": {
     "pages_ocr": 3,
+    "pages_ia": 3,
     "language": {"enregistrements": 2, "caracteres": 1450},
     "ia": {
       "detection":      {"appels": 1, "jetons_entree": 5200, "jetons_sortie": 640, "jetons_raisonnement": 384},
@@ -83,6 +85,7 @@ Le statut d'une pièce de mail peut prendre trois valeurs de plus que `ok` / `qu
 |---|---|
 | `pages` | Pages du PDF ouvert par le pipeline (une image compte une page par image). Une image refusée à la préparation compte les pages préparées. Un fichier refusé avant ouverture (format inconnu, PDF chiffré) compte 0. |
 | `consommation.pages_ocr` | Pages **envoyées** à Document Intelligence, c'est-à-dire facturées. Avec `OCR_NATIVE_PAGES=true` (défaut), les pages natives passent aussi à l'OCR pour lire le texte de leurs images. |
+| `consommation.pages_ia` | Pages d'un PDF ou d'une image dont le texte a été **envoyé aux agents IA** : celles qui ont au moins une ligne de texte (une page blanche n'est pas envoyée). 0 si le document est arrêté avant l'IA : écriture manuscrite, PDF chiffré ou illisible, image floue, pièce refusée ou retirée. Le texte d'un mail et un JSON passent par l'IA sans avoir de page : ils sont comptés à part (« Textes passés par les agents IA »). |
 | `consommation.ia.*` | Jetons rendus par Azure OpenAI pour chaque appel : `jetons_sortie` **comprend** `jetons_raisonnement`. Les jetons d'entrée servis par le cache de prompt ne sont pas distingués : le coût calculé est un majorant. |
 | `consommation.language` | Enregistrements facturés par Azure AI Language (un par tranche de 1 000 caractères de chaque texte envoyé). |
 | `toursVerification`, `residus` | Tours de l'agent vérificateur et motif `residus_apres_verification`. Une pièce, le texte d'un mail et un JSON ont chacun leurs tours. |
@@ -136,14 +139,16 @@ L'écran affiche les cinq premiers tableaux. Le classeur Excel les contient tous
 
 | Onglet | Contenu |
 |---|---|
-| **Synthèse** | Documents déposés (un mail compte pour un), dont mails ; publiés, en quarantaine, **% de quarantaine** ; documents traités plus d'une fois ; pièces de mails traitées, en quarantaine, refusées, images retirées ; JSON ; **pages traitées**, pages par document (moyenne, médiane, maximum) ; pages OCR ; appels et jetons IA ; enregistrements Language ; **coût estimé** et **coût par page traitée**. |
-| **Par période** | Par jour, mois ou année : documents, mails, quarantaine (nombre et %), pages, pages OCR, jetons, coût et coût par page. |
-| **Par type** | Par catégorie et type MIME : nombre, publiés, en quarantaine, refusés, retirés, non traités, % de quarantaine, pages, pages OCR, jetons, coût. |
+| **Synthèse** | Documents déposés (un mail compte pour un), dont mails ; publiés, en quarantaine, **% de quarantaine** ; documents traités plus d'une fois ; pièces de mails traitées, en quarantaine, refusées, images retirées ; JSON ; **pages traitées**, pages par document (moyenne, médiane, maximum) ; **pages passées par l'OCR**, **pages passées par les agents IA**, textes passés par l'IA (corps de mail, JSON) ; appels et jetons IA ; enregistrements Language ; **coût estimé** et **coût par page traitée**. |
+| **Par période** | Par jour, mois ou année : documents, mails, quarantaine (nombre et %), pages, pages OCR, pages IA, jetons, coût et coût par page. |
+| **Par type** | Par catégorie et type MIME : nombre, publiés, en quarantaine, refusés, retirés, non traités, % de quarantaine, pages, pages OCR, pages IA, jetons, coût. Les pièces de mails y sont détaillées (PDF, images, autres) : on y lit combien de pages de pièces jointes sont réellement passées par l'OCR et par l'IA. |
 | **Tours de vérification** | Par période, sur les textes vérifiés (documents, textes de mails, pièces, JSON) : nombre à 1, 2, 3, 4 tours et plus, moyenne, maximum, **résidus après le dernier tour** (nombre et %). |
 | **Agents IA** | Appels et jetons de la détection, de la vérification et de la classification, avec leur coût. |
-| **Documents** (Excel seulement) | Une ligne par document déposé : jour, heure, empreinte, catégorie, type MIME, statut, motifs, domaine, pages (pièces comprises), nombre de pièces, tours, pages OCR, appels et jetons (pièces et JSON compris), coût. |
+| **Documents** (Excel seulement) | Une ligne par document déposé : jour, heure, empreinte, catégorie, type MIME, statut, motifs, domaine, pages (pièces comprises), nombre de pièces, tours, pages OCR, pages IA, appels et jetons (pièces et JSON compris), coût. |
 
 Définitions :
+- **Pages passées par l'OCR** : pages envoyées à Document Intelligence (facturées), pièces de mails comprises.
+- **Pages passées par les agents IA** : pages dont le texte a été envoyé à l'agent de détection (puis au vérificateur), pièces de mails comprises. Une page peut passer par l'IA sans OCR (PDF natif avec `OCR_NATIVE_PAGES=false`) ou par l'OCR sans IA (écriture manuscrite détectée).
 - **% de quarantaine** : documents en quarantaine / documents terminés (publiés + quarantaine), un mail comptant pour un.
 - **Pages traitées** : somme des pages de toutes les fiches. Un mail apporte les pages de ses pièces ; un document retraité compte à chaque traitement.
 - **Coût par page traitée** : coût estimé de la période / pages traitées.

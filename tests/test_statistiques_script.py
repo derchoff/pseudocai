@@ -45,6 +45,9 @@ def test_summary_counts_documents_pages_and_quarantine(settings):
     assert summary["% de mise en quarantaine"] == 25.0
     assert summary["Documents traités plus d'une fois"] == 1
     assert summary["Pages traitées (documents et pièces)"] == 3  # 2 x 1 page + 1 page de pièce
+    assert summary["Pages passées par l'OCR (Document Intelligence)"] == 3
+    assert summary["Pages passées par les agents IA"] == 3  # le ZIP refusé n'y passe pas
+    assert summary["Textes passés par les agents IA (corps de mail, JSON)"] == 0  # agents simulés : pas d'appel compté
     assert summary["Coût estimé"] is None  # pas de prix
 
 

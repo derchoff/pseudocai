@@ -1,6 +1,7 @@
 """Consommation des services facturés à l'usage, relevée à chaque traitement (rapport « consommation »).
 
     {"pages_ocr": 3,                                   Document Intelligence : pages analysées
+     "pages_ia": 3,                                    pages dont le texte a été envoyé aux agents IA
      "language": {"enregistrements": 2, "caracteres": 1450},   Azure AI Language (PII)
      "ia": {"detection":      {"appels": 1, "jetons_entree": …, "jetons_sortie": …, "jetons_raisonnement": …},
             "verification":   {…, somme des tours},
@@ -27,6 +28,7 @@ def empty_consumption() -> dict:
     """Consommation nulle d'un traitement."""
     return {
         "pages_ocr": 0,
+        "pages_ia": 0,
         "language": {"enregistrements": 0, "caracteres": 0},
         "ia": {agent: empty_agent() for agent in AGENTS},
     }
@@ -53,6 +55,7 @@ def merge(*items: dict | None) -> dict:
         if not item:
             continue
         total["pages_ocr"] += int(item.get("pages_ocr", 0) or 0)
+        total["pages_ia"] += int(item.get("pages_ia", 0) or 0)
         for k in ("enregistrements", "caracteres"):
             total["language"][k] += int((item.get("language") or {}).get(k, 0) or 0)
         for agent, usage in (item.get("ia") or {}).items():

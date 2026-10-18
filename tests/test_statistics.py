@@ -57,6 +57,7 @@ def test_pipeline_report_always_carries_the_consumption(settings):
     assert usage["ia"]["detection"] == CountingDetector.last_stats
     assert usage["ia"]["verification"]["appels"] == report["tours_verification"]  # somme des tours
     assert usage["pages_ocr"] == report["pages"]  # OCR_NATIVE_PAGES : toutes les pages passent à l'OCR
+    assert usage["pages_ia"] == report["pages"] == 1  # la page a du texte : envoyée aux agents IA
 
 
 def test_published_pdf_writes_one_document_item(settings):
@@ -160,3 +161,19 @@ def test_period_follows_the_deposit_time_in_paris():
     job = Job("j", "d", "incoming", "a.pdf", "pdf", "pdf", received_at="x", deposited_at="2026-12-31T23:30:00+00:00")
     [item] = build_items(job, "ok", {"pages": 2}, None, "Europe/Paris")
     assert (item["jour"], item["hour"]) == ("2027-01-01", 0)
+
+
+def test_handwritten_document_goes_through_ocr_but_not_ai(monkeypatch):
+    from test_handwriting import run_scanned
+
+    result, detector = run_scanned(monkeypatch, "quarantaine")
+    usage = result.report["consommation"]
+    assert detector.calls == 0 and usage["pages_ocr"] == 1 and usage["pages_ia"] == 0
+
+
+def test_mail_text_goes_through_ai_without_pages(settings):
+    rt = mail_runtime(settings, make_mail())
+    run_chain(rt, "lot1/mail.eml")
+    mail, part = items(rt)
+    assert mail["consommation"]["pages_ia"] == 0 and mail["consommation"]["pages_ocr"] == 0
+    assert part["consommation"]["pages_ia"] == 1  # la pièce PDF

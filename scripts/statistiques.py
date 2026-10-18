@@ -13,7 +13,8 @@ par jour, mois ou année (--par) :
 - répartition par type : PDF hors mail, image hors mail (par type MIME), mail, PDF dans un mail,
   image dans un mail, autre pièce d'un mail, fichier refusé au routage, JSON de métadonnées ;
 - tours de vérification (1, 2, 3… tours ; résidus après le dernier tour) ;
-- consommation (pages OCR, appels et jetons des agents IA, enregistrements Azure AI Language)
+- pages réellement passées par l'OCR et par les agents IA ;
+- consommation (appels et jetons des agents IA, enregistrements Azure AI Language)
   et, avec les prix (--prix-*), coût estimé et coût par page.
 
 Un document retraité ou redéposé compte à chaque traitement : il consomme à nouveau OCR et IA.
@@ -86,6 +87,7 @@ def usage(row: dict) -> dict:
     ia = c.get("ia") or {}
     out = {
         "pages_ocr": int(c.get("pages_ocr", 0) or 0),
+        "pages_ia": int(c.get("pages_ia", 0) or 0),
         "language": int((c.get("language") or {}).get("enregistrements", 0) or 0),
         "appels": 0, "entree": 0, "sortie": 0, "raisonnement": 0,
     }
@@ -126,7 +128,7 @@ def _pct(part: int, whole: int) -> float | None:
 
 def _add(total: dict, u: dict) -> None:
     """Ajoute une consommation à plat à un total."""
-    for k in ("pages_ocr", "language", "appels", "entree", "sortie", "raisonnement"):
+    for k in ("pages_ocr", "pages_ia", "language", "appels", "entree", "sortie", "raisonnement"):
         total[k] = total.get(k, 0) + u[k]
 
 
@@ -187,7 +189,10 @@ def compute(rows: list[dict], by: str, prices: dict) -> dict:
         ("Pages par document (moyenne)", round(stats.mean(d["pages"] for d in docs), 2) if docs else None),
         ("Pages par document (médiane)", stats.median(d["pages"] for d in docs) if docs else None),
         ("Pages par document (maximum)", max((d["pages"] for d in docs), default=None)),
-        ("Pages analysées par l'OCR", total.get("pages_ocr", 0)),
+        ("Pages passées par l'OCR (Document Intelligence)", total.get("pages_ocr", 0)),
+        ("Pages passées par les agents IA", total.get("pages_ia", 0)),
+        ("Textes passés par les agents IA (corps de mail, JSON)",
+         sum(1 for r in rows if r.get("categorie") in ("mail", "json") and usage(r)["appels"])),
         ("Appels aux agents IA", total.get("appels", 0)),
         ("Jetons d'entrée", total.get("entree", 0)),
         ("Jetons de sortie (raisonnement compris)", total.get("sortie", 0)),
@@ -204,10 +209,10 @@ def compute(rows: list[dict], by: str, prices: dict) -> dict:
         "Agents IA": _agents(rows, prices),
         "Documents": (
             ["Jour", "Heure", "Document (empreinte)", "Catégorie", "Type MIME", "Statut", "Motifs", "Domaine",
-             "Pages", "Pièces", "Tours", "Pages OCR", "Appels IA", "Jetons entrée", "Jetons sortie", "Coût"],
+             "Pages", "Pièces", "Tours", "Pages OCR", "Pages IA", "Appels IA", "Jetons entrée", "Jetons sortie", "Coût"],
             [[d["jour"], d["heure"], d["documentId"], CATEGORIES.get(d["categorie"], d["categorie"]), d["mime"],
               d["statut"], d["motifs"], d["domain"], d["pages"], d["pieces"], d["tours"], d.get("pages_ocr", 0),
-              d.get("appels", 0), d.get("entree", 0), d.get("sortie", 0), _money(d["cout"], 4)] for d in docs],
+              d.get("pages_ia", 0), d.get("appels", 0), d.get("entree", 0), d.get("sortie", 0), _money(d["cout"], 4)] for d in docs],
         ),
     }
 
@@ -238,10 +243,10 @@ def _by_period(rows: list[dict], docs: list[dict], by: str, prices: dict) -> tup
         g = groups[key]
         c = cost(g["u"], prices) if g["u"] else None
         out.append([key, g["docs"], g["mails"], g["quar"], _pct(g["quar"], g["fin"]), g["pages"],
-                    g["u"].get("pages_ocr", 0), g["u"].get("entree", 0), g["u"].get("sortie", 0),
+                    g["u"].get("pages_ocr", 0), g["u"].get("pages_ia", 0), g["u"].get("entree", 0), g["u"].get("sortie", 0),
                     _money(c), _money(c / g["pages"] if c is not None and g["pages"] else None, 4)])
     headers = ["Période", "Documents", "dont mails", "En quarantaine", "% quarantaine", "Pages", "Pages OCR",
-               "Jetons entrée", "Jetons sortie", "Coût", "Coût / page"]
+               "Pages IA", "Jetons entrée", "Jetons sortie", "Coût", "Coût / page"]
     return headers, out
 
 
@@ -261,9 +266,10 @@ def _by_type(rows: list[dict], prices: dict) -> tuple[list, list]:
         g, u = groups[key], usages[key]
         out.append([CATEGORIES.get(key[0], key[0]), key[1], g["n"], g["ok"], g["quarantine"], g["refusee"],
                     g["retiree"], g["non_traitee"], _pct(g["quarantine"], g["ok"] + g["quarantine"]), g["pages"],
-                    u.get("pages_ocr", 0), u.get("entree", 0) + u.get("sortie", 0), _money(cost(u, prices))])
+                    u.get("pages_ocr", 0), u.get("pages_ia", 0), u.get("entree", 0) + u.get("sortie", 0),
+                    _money(cost(u, prices))])
     headers = ["Catégorie", "Type MIME", "Nombre", "Publiés", "Quarantaine", "Refusées", "Retirées", "Non traitées",
-               "% quarantaine", "Pages", "Pages OCR", "Jetons", "Coût"]
+               "% quarantaine", "Pages", "Pages OCR", "Pages IA", "Jetons", "Coût"]
     return headers, out
 
 

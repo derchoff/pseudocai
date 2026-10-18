@@ -173,6 +173,10 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
     step = time.monotonic()
     entities = services.detector.detect(lines)
     consumption["ia"]["detection"] = agent_usage(services.detector)
+    if source.content is None:
+        # Pages d'un vrai document (PDF, image) dont le texte part aux agents IA : celles qui ont au
+        # moins une ligne non vide. Un texte déjà extrait (corps de mail, JSON) n'a pas de page.
+        consumption["pages_ia"] = len({line.page for line in lines if line.text.strip()})
     llm_seconds = time.monotonic() - step
     located: list[dict] | None = [] if diag is not None else None
     spans, unresolved = resolve_entities(entities, content, settings.fuzzy_min_score, located)
