@@ -7,8 +7,7 @@ import logging
 import re
 import time
 from collections import Counter
-from dataclasses import dataclass, field
-from typing import Callable, Protocol
+from typing import Callable
 
 import pymupdf
 
@@ -22,13 +21,12 @@ from ..classification import (
     unclassified,
 )
 from ..config import Settings
-from ..doctypes import DocTypeCatalog
 from ..detection.regex_rules import detect_regex
 from ..exceptions import apply_exceptions
-from ..extraction import OcrEngine, extract_document
+from ..extraction import extract_document
 from ..fields import BUILTIN_STRATEGIES, BUILTIN_SUBSTITUTIONS, DEFAULT_STRATEGY, DEFAULT_SUBSTITUTION, FieldCatalog
 from ..models import DocumentContent, Entity, Line, PageContent, Span
-from ..pseudonymizer import MappingRecord, Pseudonymizer, ValueCipher, normalize
+from ..pseudonymizer import MappingRecord, Pseudonymizer, normalize
 from ..redaction import normalize_rotation, render_pdf
 from ..surrogates import SurrogateFactory
 from ..spans import (
@@ -40,97 +38,10 @@ from ..spans import (
     resolve_entities,
 )
 from ..statistics.usage import add_agent, agent_usage, empty_consumption
+from .diagnostic import agent_stats, localisation_diagnostic, pages_diagnostic, round_diagnostic
+from .models import PipelineInput, PipelineResult, Services
 
 log = logging.getLogger(__name__)
-
-
-class Detector(Protocol):
-    """Agent de détection des données personnelles."""
-    prompt_sha256: str | None
-
-    def detect(self, lines: list[Line]) -> list[Entity]:
-        """Entités trouvées dans les lignes du document."""
-        ...
-
-
-class Verifier(Protocol):
-    """Agent de vérification du texte pseudonymisé."""
-    prompt_sha256: str | None
-
-    def verify(self, pseudonymised_lines: list[tuple[str, str]]) -> list[Entity]:
-        """Données restées en clair dans les lignes pseudonymisées (id, texte)."""
-        ...
-
-
-class Classifier(Protocol):
-    """Agent de classification du type de document."""
-    prompt_sha256: str | None
-
-    def classify(self, pseudonymised_text: str) -> tuple[list[dict], DocTypeCatalog, str]:
-        """Types probables du document : (types bruts, référentiel, empreinte du prompt)."""
-        ...
-
-
-class SpanDetector(Protocol):
-    """Détecteur qui renvoie directement des zones (ex. Azure AI Language)."""
-
-    def detect(self, lines: list[Line]) -> list[Span]:
-        """Zones détectées dans les lignes du document."""
-        ...
-
-
-@dataclass
-class Services:
-    """Services utilisés par le pipeline : agents IA, OCR, jetons, chiffrement, valeurs fictives."""
-    detector: Detector
-    pseudonymizer: Pseudonymizer
-    cipher: ValueCipher
-    ocr: OcrEngine | None = None
-    verifier: Verifier | None = None
-    language: SpanDetector | None = None
-    # Catalogue des champs (référentiel Markdown) : fournit la stratégie de normalisation par type.
-    fields: Callable[[], FieldCatalog] | None = None
-    # Agent de classification du type de document (None = classification désactivée).
-    classifier: Classifier | None = None
-    # Fabrique de valeurs fictives (obligatoire en mode PSEUDO_OUTPUT_MODE=substitution).
-    surrogates: SurrogateFactory | None = None
-
-
-Renderer = Callable[[bytes, DocumentContent, list[Span], int], bytes]
-
-
-@dataclass
-class PipelineInput:
-    """Document à traiter. Le pipeline ne connaît que des PDF ; une image arrive ici déjà emballée
-    en PDF par l'étape de préparation, avec son OCR et son rendu dédiés (voir prepared_image.py)."""
-
-    pdf: bytes  # PDF analysé (PDF d'origine, ou image d'origine emballée en PDF)
-    ocr: OcrEngine | None = None  # remplace services.ocr (ex. OCR de la copie redressée d'une image)
-    force_ocr: bool = False  # True pour une image : toutes les pages sont des « scans »
-    renderer: Renderer | None = None  # produit le document de sortie (défaut : PDF caviardé)
-    source: dict = field(default_factory=dict)  # origine et préparation, ajoutées au rapport
-    # Texte déjà extrait (corps d'un mail…) : ni PDF, ni OCR, ni rendu ; l'appelant produit la sortie
-    # à partir de PipelineResult.spans.
-    content: DocumentContent | None = None
-    # False pour une partie d'un ensemble (pièce jointe d'un mail) : l'ensemble est classé une fois.
-    classify: bool = True
-
-
-@dataclass
-class PipelineResult:
-    """Résultat du pipeline : statut, motifs, document produit, correspondances, rapport et occurrences."""
-    status: str  # "ok" | "quarantine"
-    reasons: list[str] = field(default_factory=list)
-    output: bytes | None = None  # document pseudonymisé, au format produit par le renderer
-    text: str | None = None
-    records: list[MappingRecord] = field(default_factory=list)
-    report: dict = field(default_factory=dict)
-    classification: Classification | None = None
-    # Une entrée par zone remplacée : jeton, type, valeur fictive, page, position (sans valeur d'origine).
-    occurrences: list[dict] = field(default_factory=list)
-    token_text: str | None = None  # texte pseudonymisé avec les jetons (sert au classement d'un ensemble)
-    content: DocumentContent | None = None  # texte analysé
-    spans: list[Span] = field(default_factory=list)  # zones remplacées, valeurs fictives comprises
 
 
 def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Services) -> PipelineResult:
@@ -158,7 +69,7 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
         lines = content.lines()
         report["lignes"] = len(lines)
         if diag is not None:
-            diag["extraction"] = _pages_diagnostic(content.pages)
+            diag["extraction"] = pages_diagnostic(content.pages)
     else:
         extracted = _open_and_extract(source, settings, services, report, reasons)
         if isinstance(extracted, PipelineResult):
@@ -203,7 +114,7 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
     report["prompt_detection_sha256"] = services.detector.prompt_sha256
     if diag is not None:
         diag["detection"] = {
-            "llm": _agent_stats(services.detector, entities, llm_seconds),
+            "llm": agent_stats(services.detector, entities, llm_seconds),
             "regex": len(regex_spans),
             "language": None if language_spans is None else len(language_spans),
             "propagation": len(propagated),
@@ -211,7 +122,7 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
             "zones_retenues": len(spans),
             "zones_retirees_exceptions": before_exceptions - len(spans),
         }
-        diag["localisation"] = _localisation_diagnostic(located)
+        diag["localisation"] = localisation_diagnostic(located)
         diag["durees_s"]["detection_llm"] = round(llm_seconds, 2)
         if language_spans is not None:
             diag["durees_s"]["detection_language"] = round(language_seconds, 2)
@@ -243,7 +154,7 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
             still_finding = after != before
             if diag is not None:
                 rounds.append(
-                    _round_diagnostic(
+                    round_diagnostic(
                         rounds_done, services.verifier, residual_entities, residual_located,
                         before, after, candidate, verifier_seconds,
                     )
@@ -367,7 +278,7 @@ def _open_and_extract(
     content = DocumentContent(pages=pages)
     lines = content.lines()
     if "diagnostic" in report:
-        report["diagnostic"]["extraction"] = _pages_diagnostic(pages)
+        report["diagnostic"]["extraction"] = pages_diagnostic(pages)
         report["diagnostic"]["durees_s"]["extraction"] = round(time.monotonic() - started, 2)
     ocr_pages = [p for p in pages if p.source == "ocr"]
     report.update(
@@ -649,78 +560,3 @@ def _mapping_records(
 
 # --------------------------------------------------------------------------- rapport « diagnostic »
 # Rien ici ne contient de valeur d'origine : types, identifiants de ligne, nombres, durées.
-
-MAX_DIAGNOSTIC_ITEMS = 200  # au-delà, les listes sont tronquées (le total reste indiqué)
-
-
-def _pages_diagnostic(pages: list[PageContent]) -> list[dict]:
-    """Par page : mode (natif ou OCR), lignes, mots, confiance OCR, mots manuscrits."""
-    out = []
-    for p in pages:
-        entry = {
-            "page": p.index + 1,
-            "source": p.source,
-            "lignes": len(p.lines),
-            "mots": sum(len(ln.words) for ln in p.lines),
-        }
-        if p.source == "native":
-            entry["lignes_texte_images"] = sum(1 for ln in p.lines if ln.source == "ocr")
-        if p.ocr_confidence is not None:
-            entry["confiance_ocr"] = round(p.ocr_confidence, 3)
-        handwritten = sum(1 for ln in p.lines for w in ln.words if w.handwritten)
-        if handwritten:
-            entry["mots_manuscrits"] = handwritten
-        out.append(entry)
-    return out
-
-
-def _agent_stats(agent, entities: list[Entity], seconds: float) -> dict:
-    """Statistiques d'un agent IA (appels, jetons, entités rendues ou écartées), ou à défaut le nombre
-    d'entités et la durée mesurée ici."""
-    stats = getattr(agent, "last_stats", None)
-    if isinstance(stats, dict):
-        return {**stats, "entites_retenues": len(entities)}
-    return {"entites_retenues": len(entities), "duree_s": round(seconds, 2)}
-
-
-def _localisation_diagnostic(located: list[dict]) -> dict:
-    """Méthodes de localisation employées et détail des échecs (sans les valeurs)."""
-    failures = [e for e in located if e["methode"] == "echec"]
-    out: dict = {
-        "methodes": dict(Counter(e["methode"] for e in located)),
-        "echecs": failures[:MAX_DIAGNOSTIC_ITEMS],
-    }
-    if failures:
-        out["echecs_par_type"] = dict(Counter(e["type"] for e in failures))
-    if len(failures) > MAX_DIAGNOSTIC_ITEMS:
-        out["echecs_tronques"] = len(failures) - MAX_DIAGNOSTIC_ITEMS
-    return out
-
-
-def _round_diagnostic(
-    number: int,
-    verifier,
-    residuals: list[Entity],
-    located: list[dict],
-    before: set,
-    after: set,
-    candidate: list[Span],
-    seconds: float,
-) -> dict:
-    """Un tour de vérification : résidus signalés (type, ligne), localisation, ce qui a été ajouté."""
-    added = after - before
-    added_types = Counter(
-        s.type for s in candidate if any((s.line_id, i) in added for i in range(s.start, s.end))
-    )
-    return {
-        "tour": number,
-        "agent": _agent_stats(verifier, residuals, seconds),
-        "residus_signales": len(residuals),
-        "residus": [{"type": e.type, "ligne": e.line_id or None} for e in residuals][:MAX_DIAGNOSTIC_ITEMS],
-        "residus_par_type": dict(Counter(e.type for e in residuals)),
-        "localisation": _localisation_diagnostic(located),
-        "nouveaux_caracteres_masques": len(added),
-        "nouvelles_zones_par_type": dict(added_types),
-        "lignes_completees": sorted({line_id for line_id, _ in added})[:MAX_DIAGNOSTIC_ITEMS],
-        "a_trouve_du_nouveau": after != before,
-    }
