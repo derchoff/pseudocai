@@ -21,7 +21,7 @@ from pseudo.models import Entity
 from pseudo.pipeline import run_pipeline
 from pseudo.prompts import LocalPromptSource, PromptRepository
 from pseudo.runtime import Runtime
-from fakes import FakeBlobService, MemoryStore, run_chain
+from fakes import DEPOSIT as D, FakeBlobService, MemoryStore, run_chain
 from test_pipeline import make_text_pdf, services
 
 PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
@@ -229,7 +229,8 @@ def test_disabled_classification_writes_without_type_folder(settings, monkeypatc
 def make_runtime(settings, svc, blobs=None, store=None):
     """Runtime de test avec la facture d'exemple déposée dans incoming/lot1/."""
     blobs = blobs or FakeBlobService()
-    blobs.put("incoming", "lot1/facture.pdf", make_text_pdf())
+    if ("incoming", "lot1/facture.pdf") not in blobs.blobs:  # déjà déposée : garde sa date de dépose
+        blobs.put("incoming", "lot1/facture.pdf", make_text_pdf())
     return Runtime(settings=settings, services=svc, mapping_store=store or MemoryStore(), blob_service=blobs)
 
 
@@ -238,17 +239,17 @@ def test_outputs_are_stored_in_the_type_folder(settings):
     assert run_chain(runtime, "lot1/facture.pdf")[0] == "ok"
     blobs = runtime.blob_service
     assert blobs.names("pseudonymised") == [
-        "dentaire/lot1/facture.pdf",
-        "dentaire/lot1/facture.pseudonymise.txt",
-        "dentaire/lot1/facture.rapport.json",
+        f"{D}/domain=dentaire/lot1/facture.pdf",
+        f"{D}/domain=dentaire/lot1/facture.pseudonymise.txt",
+        f"{D}/domain=dentaire/lot1/facture.rapport.json",
     ]
-    meta = blobs.blobs[("pseudonymised", "dentaire/lot1/facture.pdf")]["metadata"]
+    meta = blobs.blobs[("pseudonymised", f"{D}/domain=dentaire/lot1/facture.pdf")]["metadata"]
     assert meta["document_type"] == "dentaire" and meta["document_types"] == "DENTAIRE:0.92;OPTIQUE:0.35"
-    report = json.loads(blobs.data("pseudonymised", "dentaire/lot1/facture.rapport.json"))
+    report = json.loads(blobs.data("pseudonymised", f"{D}/domain=dentaire/lot1/facture.rapport.json"))
     assert report["classification"]["types"][0]["type"] == "DENTAIRE"
     trace = runtime.mapping_store.traces[-1]
     assert trace["classification"]["principal"] == "DENTAIRE"
-    assert trace["sorties"][0] == "pseudonymised/dentaire/lot1/facture.pdf"
+    assert trace["sorties"][0] == f"pseudonymised/{D}/domain=dentaire/lot1/facture.pdf"
     assert (trace["origin"], trace["stage"]) == ("pdf", "pseudonymisation")
     assert ("incoming", "lot1/facture.pdf") in blobs.blobs  # l'entrée n'est pas déplacée
 
@@ -258,8 +259,8 @@ def test_quarantine_is_also_stored_by_type(settings):
     svc.detector.detect = lambda lines: [Entity("p1-l2", "INTROUVABLE", "NOM")]
     runtime = make_runtime(settings, svc)
     assert run_chain(runtime, "lot1/facture.pdf")[0] == "quarantine"
-    assert runtime.blob_service.names("quarantine") == ["psychologie/lot1/facture.pdf", "psychologie/lot1/facture.pdf.motif.json"]
-    reason = json.loads(runtime.blob_service.data("quarantine", "psychologie/lot1/facture.pdf.motif.json"))
+    assert runtime.blob_service.names("quarantine") == [f"{D}/domain=psychologie/lot1/facture.pdf", f"{D}/domain=psychologie/lot1/facture.pdf.motif.json"]
+    reason = json.loads(runtime.blob_service.data("quarantine", f"{D}/domain=psychologie/lot1/facture.pdf.motif.json"))
     assert reason["classification"]["principal"] == "PSYCHOLOGIE" and "entites_non_localisees" in reason["motifs"]
     assert reason["etape"] == "pseudonymisation"
 
@@ -268,7 +269,7 @@ def test_reprocessing_with_another_type_removes_previous_outputs(settings):
     blobs, store = FakeBlobService(), MemoryStore()
     run_chain(make_runtime(settings, services(classifier=FakeClassifier(scores(("DENTAIRE", 0.9)))), blobs, store), "lot1/facture.pdf")
     run_chain(make_runtime(settings, services(classifier=FakeClassifier(scores(("OPTIQUE", 0.9)))), blobs, store), "lot1/facture.pdf")
-    assert all(n.startswith("optique/") for n in blobs.names("pseudonymised"))
+    assert all(n.startswith(f"{D}/domain=optique/") for n in blobs.names("pseudonymised"))
     assert len(blobs.names("pseudonymised")) == 3
 
 
@@ -280,7 +281,7 @@ def test_reprocessing_into_quarantine_removes_previous_pseudonymised_outputs(set
     svc.detector.detect = lambda lines: [Entity("p1-l2", "INTROUVABLE", "NOM")]
     run_chain(make_runtime(settings, svc, blobs, store), "lot1/facture.pdf")
     assert blobs.names("pseudonymised") == []
-    assert blobs.names("quarantine")[0] == "kinesitherapie/lot1/facture.pdf"
+    assert blobs.names("quarantine")[0] == f"{D}/domain=kinesitherapie/lot1/facture.pdf"
     assert ("incoming", "lot1/facture.pdf") in blobs.blobs  # l'entrée n'est jamais supprimée par le nettoyage
 
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from fakes import FakeBlobService, MemoryStore, event, run_chain
+from fakes import DEPOSIT as D, FakeBlobService, MemoryStore, event, run_chain
 from pseudo.config import Settings
 from pseudo.exceptions import Exceptions, parse_exceptions
 from pseudo.images.prepare import handle_image_job
@@ -90,7 +90,7 @@ def test_mail_is_published_as_one_folder(settings):
     folder = {n.rsplit("/", 1)[0] for n in files}
     assert len(folder) == 1
     folder = folder.pop()
-    assert folder == "dentaire/lot1/mail"  # nom du fichier .eml d'origine, sans l'extension
+    assert folder == f"{D}/domain=dentaire/lot1/mail"  # nom du fichier .eml d'origine, sans l'extension
     names = {n.rsplit("/", 1)[1] for n in files}
     assert {"mail.json", "body.html", "body.pseudonymise.txt", "rapport.json"} <= names and len(names) == 6
     attachment = next(n for n in names if n.endswith(".pdf"))
@@ -409,4 +409,4 @@ def test_json_arrived_before_the_mail_is_attached_when_the_mail_is_published(set
     route = route_event(event("lot1/mail.eml.json"), rt)
     assert handle_text_job(route.job.to_json(), rt) == "en_attente"  # le mail n'est pas encore traité
     assert run_chain(rt, "lot1/mail.eml")[0] == "ok"
-    assert "dentaire/lot1/mail/mail.eml.json" in published(rt)  # rattaché par la finalisation du mail
+    assert f"{D}/domain=dentaire/lot1/mail/mail.eml.json" in published(rt)  # rattaché par la finalisation du mail

@@ -1,9 +1,9 @@
 """Finalisation d'un mail, quand toutes ses pièces sont terminées : classement de l'ensemble puis
 publication du dossier, ou quarantaine du mail entier (tout ou rien).
 
-    pseudonymised/<type>/<chemin>/<nom du .eml>/   mail.json · body.html|txt · body.pseudonymise.txt ·
+    pseudonymised/<date>/domain=<type>/<chemin>/<nom du .eml>/   mail.json · body.html|txt · body.pseudonymise.txt ·
                                                    pièces et <pièce>.pseudonymise.txt · rapport.json
-    quarantine/<type>/<chemin>/<nom du .eml>/      <mail d'origine>.eml · motif.json
+    quarantine/<date>/domain=<type>/<chemin>/<nom du .eml>/      <mail d'origine>.eml · motif.json
 
 Les parties d'un mail : le texte (en-têtes, objet, noms des pièces, corps ; voir text.py) et chaque
 pièce jointe. Chaque tâche qui termine une partie appelle try_finalize. Seule celle qui voit toutes
@@ -31,6 +31,7 @@ from ..outputs import (
     _now,
     _occurrence_items,
     _write,
+    deposit_folder,
     job_source_blob,
     previous_trace,
 )
@@ -106,7 +107,7 @@ def _publish(
 ) -> None:
     """Écrit le dossier pseudonymisé et les occurrences (ré-identification par fichier et position)."""
     settings = runtime.settings
-    folder = posixpath.join(classification.dossier, state["folder"]) if classification.dossier else state["folder"]
+    folder = posixpath.join(deposit_folder(job, classification.dossier, settings), state["folder"])
     report = {**report, "statut": "ok", "motifs": [], "date": _now()}
     files = [
         OutputFile(f"{folder}/mail.json", ws.get("out/mail.json"), "application/json"),
@@ -137,7 +138,7 @@ def _publish(
         part_job = Job(
             job_id=f"{job.job_id}-{part['index']}", document_id=part["document_id"],
             source_container=job.source_container, source_name=job.source_name, source_format=part["format"],
-            origin="mail", received_at=job.received_at,
+            origin="mail", received_at=job.received_at, deposited_at=job.deposited_at,
         )
         path = f"{settings.output_container}/{folder}/{part['name']}"
         items = _occurrence_items(part_job, path, marker.get("occurrences", []), marker.get("image_dpi"))
@@ -162,7 +163,7 @@ def quarantine_mail(
     après avoir nettoyé le dossier de travail)."""
     settings = ctx.settings
     classification = classification or unclassified(STATUT_NON_APPLICABLE, settings.unclassified_folder)
-    folder = posixpath.join(classification.dossier, folder_name) if classification.dossier else folder_name
+    folder = posixpath.join(deposit_folder(job, classification.dossier, settings), folder_name)
     motif = {
         "motifs": reasons,
         "etape": STAGE_MAIL,

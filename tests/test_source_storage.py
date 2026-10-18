@@ -2,7 +2,7 @@
 
 import pytest
 
-from fakes import FakeBlobService, MemoryStore, event, run_chain
+from fakes import DEPOSIT as D, FakeBlobService, MemoryStore, event, run_chain
 from pseudo.config import Settings
 from pseudo.router import route_event
 from pseudo.runtime import Runtime, _source_blob_service
@@ -33,7 +33,7 @@ def test_document_is_read_from_the_source_account_and_published_in_data(settings
     rt = runtime(settings)
     status, _ = run_chain(rt, "lot1/facture.pdf")
     assert status == "ok"
-    assert "lot1/facture.pdf" in rt.blob_service.names("pseudonymised")
+    assert f"{D}/lot1/facture.pdf" in rt.blob_service.names("pseudonymised")
     assert rt.source_blob_service.names("factures-entrantes") == ["lot1/facture.pdf"]  # source intacte
     assert rt.blob_service.names("factures-entrantes") == []  # rien d'écrit dans data côté entrée
 

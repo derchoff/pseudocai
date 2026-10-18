@@ -6,5 +6,5 @@ dans un dossier par mail.
                   jointes déposées dans work/ et envoyées comme tâches normales (pdf-jobs, image-jobs)
     pdf-jobs  ──► parts.handle_mail_part : pièce pseudonymisée, résultat écrit dans work/
     dernière pièce terminée ──► finalize.try_finalize : classement de l'ensemble, publication du
-                  dossier pseudonymised/<type>/mail-…/ ou quarantine/<type>/mail-…/ (tout ou rien)
+                  dossier pseudonymised/<date>/domain=<type>/<chemin>/<nom du .eml>/ ou quarantine/…/ (tout ou rien)
 """

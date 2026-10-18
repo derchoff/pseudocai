@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from fakes import FakeBlobService, MemoryStore, event, run_chain
+from fakes import DEPOSIT as D, FakeBlobService, MemoryStore, event, run_chain
 from pseudo.config import Settings
 from pseudo.handler import handle_pdf_job
 from pseudo.jobs import Job, document_id
@@ -77,13 +77,13 @@ def test_json_after_the_document_is_published_next_to_it(settings):
     assert run_chain(rt, DOC)[0] == "ok"
     assert run_json(rt) == "ok"
     published = rt.blob_service.names("pseudonymised")
-    assert f"dentaire/{JSON_NAME}" in published and f"dentaire/{DOC}" in published
-    data = json.loads(rt.blob_service.data("pseudonymised", f"dentaire/{JSON_NAME}"))
+    assert f"{D}/domain=dentaire/{JSON_NAME}" in published and f"{D}/domain=dentaire/{DOC}" in published
+    data = json.loads(rt.blob_service.data("pseudonymised", f"{D}/domain=dentaire/{JSON_NAME}"))
     assert data["DOCUMENT"] == GED["DOCUMENT"] and "DUPONT" not in json.dumps(data, ensure_ascii=False)
-    meta = rt.blob_service.blobs[("pseudonymised", f"dentaire/{JSON_NAME}")]["metadata"]
+    meta = rt.blob_service.blobs[("pseudonymised", f"{D}/domain=dentaire/{JSON_NAME}")]["metadata"]
     assert meta["document_type"] == "dentaire"  # mêmes métadonnées de classement que le document
     # Le chemin du JSON est ajouté à la trace du document (nettoyage lors d'un retraitement).
-    assert f"pseudonymised/dentaire/{JSON_NAME}" in rt.mapping_store.traces[-1]["sorties"]
+    assert f"pseudonymised/{D}/domain=dentaire/{JSON_NAME}" in rt.mapping_store.traces[-1]["sorties"]
     # Ré-identification : occurrences repérées par le chemin du champ, sous <document>-json.
     occ = [o for o in rt.mapping_store.occurrences if o["documentId"].endswith("-json")]
     assert occ and all(o["chemin"].startswith("GED_metadata.") for o in occ)
@@ -99,8 +99,8 @@ def test_json_before_the_document_waits_in_work_then_is_attached(settings):
     assert f"json-metadata/{doc_id}.json" in rt.blob_service.names("work")
     # Le document est traité ensuite : une fois sa trace écrite, il rattache lui-même le JSON.
     assert run_chain(rt, DOC)[0] == "ok"
-    assert f"dentaire/{JSON_NAME}" in rt.blob_service.names("pseudonymised")
-    assert f"pseudonymised/dentaire/{JSON_NAME}" in rt.mapping_store.traces[-1]["sorties"]
+    assert f"{D}/domain=dentaire/{JSON_NAME}" in rt.blob_service.names("pseudonymised")
+    assert f"pseudonymised/{D}/domain=dentaire/{JSON_NAME}" in rt.mapping_store.traces[-1]["sorties"]
     # Un second rattachement (JSON relivré, document retraité…) réécrit le même fichier, sans erreur.
     assert attach_json_metadata(rt, doc_id, "incoming", DOC) == "ok"
 
@@ -110,8 +110,8 @@ def test_document_in_quarantine_gets_the_original_json(settings):
     assert run_chain(rt, DOC)[0] == "quarantine"
     assert run_json(rt) == "quarantine"
     quarantined = rt.blob_service.names("quarantine")
-    assert f"dentaire/{JSON_NAME}" in quarantined
-    assert json.loads(rt.blob_service.data("quarantine", f"dentaire/{JSON_NAME}")) == GED  # original
+    assert f"{D}/domain=dentaire/{JSON_NAME}" in quarantined
+    assert json.loads(rt.blob_service.data("quarantine", f"{D}/domain=dentaire/{JSON_NAME}")) == GED  # original
     assert rt.blob_service.names("pseudonymised") == []
 
 
@@ -121,10 +121,10 @@ def test_unreadable_json_goes_to_quarantine_next_to_the_published_document(setti
     assert run_chain(rt, DOC)[0] == "ok"
     assert run_json(rt) == "quarantine"
     quarantined = rt.blob_service.names("quarantine")
-    assert f"dentaire/{JSON_NAME}" in quarantined and f"dentaire/{DOC}.json.motif.json" in quarantined
-    motif = json.loads(rt.blob_service.data("quarantine", f"dentaire/{DOC}.json.motif.json"))
+    assert f"{D}/domain=dentaire/{JSON_NAME}" in quarantined and f"{D}/domain=dentaire/{DOC}.json.motif.json" in quarantined
+    motif = json.loads(rt.blob_service.data("quarantine", f"{D}/domain=dentaire/{DOC}.json.motif.json"))
     assert motif["motifs"] == ["json_illisible"]
-    assert f"dentaire/{JSON_NAME}" not in rt.blob_service.names("pseudonymised")
+    assert f"{D}/domain=dentaire/{JSON_NAME}" not in rt.blob_service.names("pseudonymised")
 
 
 def test_json_of_a_mail_goes_into_the_mail_folder(settings, monkeypatch):
@@ -162,7 +162,7 @@ def test_json_before_a_photo_is_attached_when_the_photo_is_published(settings, m
         return job
 
     assert run_chain(rt, "lot1/photo.jpg", prepare_image=prepare)[0] == "ok"
-    assert "dentaire/lot1/photo.jpg.json" in rt.blob_service.names("pseudonymised")
+    assert f"{D}/domain=dentaire/lot1/photo.jpg.json" in rt.blob_service.names("pseudonymised")
 
 
 def test_json_before_a_file_refused_by_the_router_follows_it_into_quarantine(settings):
@@ -173,9 +173,9 @@ def test_json_before_a_file_refused_by_the_router_follows_it_into_quarantine(set
     assert handle_text_job(route.job.to_json(), rt) == "en_attente"
     assert route_event(event("lot1/contrat.docx"), rt).status == "quarantine"  # format non pris en charge
     quarantined = rt.blob_service.names("quarantine")
-    assert "non-classe/lot1/contrat.docx" in quarantined
-    assert "non-classe/lot1/contrat.docx.json" in quarantined  # JSON d'origine, à côté
-    assert json.loads(rt.blob_service.data("quarantine", "non-classe/lot1/contrat.docx.json")) == GED
+    assert f"{D}/domain=non-classe/lot1/contrat.docx" in quarantined
+    assert f"{D}/domain=non-classe/lot1/contrat.docx.json" in quarantined  # JSON d'origine, à côté
+    assert json.loads(rt.blob_service.data("quarantine", f"{D}/domain=non-classe/lot1/contrat.docx.json")) == GED
 
 
 def test_redelivered_document_job_attaches_a_waiting_json(settings):
@@ -190,7 +190,7 @@ def test_redelivered_document_job_attaches_a_waiting_json(settings):
     rt.mapping_store.traces.pop()
     # Le message du document est relivré : il ne retraite pas le document, mais rattache le JSON.
     assert handle_pdf_job(messages[-1], rt) == "already_processed"
-    assert f"dentaire/{JSON_NAME}" in rt.blob_service.names("pseudonymised")
+    assert f"{D}/domain=dentaire/{JSON_NAME}" in rt.blob_service.names("pseudonymised")
 
 
 def test_no_attachment_when_json_metadata_are_disabled(settings, monkeypatch):
@@ -199,4 +199,4 @@ def test_no_attachment_when_json_metadata_are_disabled(settings, monkeypatch):
     monkeypatch.setenv("JSON_METADATA_ENABLED", "false")
     rt.settings = Settings.from_env()
     assert run_chain(rt, DOC)[0] == "ok"
-    assert f"dentaire/{JSON_NAME}" not in rt.blob_service.names("pseudonymised")  # désactivé : rien de copié
+    assert f"{D}/domain=dentaire/{JSON_NAME}" not in rt.blob_service.names("pseudonymised")  # désactivé : rien de copié

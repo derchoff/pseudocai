@@ -24,7 +24,7 @@
 .EXAMPLE
   ./scripts/compter-sorties.ps1
 .EXAMPLE
-  ./scripts/compter-sorties.ps1 -SansFiles -Prefix dentaire/
+  ./scripts/compter-sorties.ps1 -SansFiles -Prefix year=2026/month=10/day=18/
 .EXAMPLE
   ./scripts/compter-sorties.ps1 -StorageAccount stpseudodevivysdata -OutCsv .\echantillon\comptage.csv
 #>
@@ -33,7 +33,8 @@ param(
     [string]$StorageAccount,
     [string]$OutputContainer = "pseudonymised",
     [string]$QuarantineContainer = "quarantine",
-    # Ne compte que les fichiers dont le chemin commence par ce préfixe (ex. « dentaire/ »)
+    # Ne compte que les fichiers dont le chemin commence par ce préfixe : date de dépose
+    # (ex. « year=2026/month=10/ ») ; le type (domain=) vient après la date et l'heure
     [string]$Prefix,
     # N'interroge pas les files Service Bus
     [switch]$SansFiles,

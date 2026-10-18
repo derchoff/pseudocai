@@ -1,7 +1,7 @@
 """Étape 2 — préparation d'une image : décodage, contrôles qualité, copie OCR, emballage en PDF.
 
     image (incoming/) ──► décodage (EXIF, HEIC, TIFF multipage)
-                     ──► contrôles qualité ── échec ──► quarantine/non-classe/
+                     ──► contrôles qualité ── échec ──► quarantine/…/domain=non-classe/
                      ──► render.pdf (original, cadrage conservé) + ocr.pdf (copie redressée)
                          + transforms.json  ──► work/<job_id>/  ──► job « pdf-jobs »
 """

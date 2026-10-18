@@ -1,7 +1,7 @@
 """Fonction de l'app images : étape ② (préparation des images).
 
     image-jobs ──► prepare_image ──► work/<job_id>/ (render.pdf, ocr.pdf, transforms.json)
-                                 └─► pdf-jobs (job enrichi), ou quarantine/non-classe/ si l'image
+                                 └─► pdf-jobs (job enrichi), ou quarantine/…/domain=non-classe/ si l'image
                                      est illisible, trop grande, trop petite ou floue
 
 Seul module qui importe le package pseudo.images (OpenCV) : il n'est chargé que dans l'app

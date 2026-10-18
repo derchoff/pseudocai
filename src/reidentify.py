@@ -8,10 +8,10 @@ Trois usages :
     python reidentify.py jetons "[NOM_3FA94C0B21]" PRENOM_77D0A1E2C4 --settings local.settings.json
 
     # 2. Toutes les valeurs remplacées d'un document publié (chemin dans pseudonymised/)
-    python reidentify.py document "pseudonymised/dentaire/lot1/facture.pdf" --settings local.settings.json
+    python reidentify.py document "pseudonymised/year=2026/month=10/day=18/hour=14/domain=dentaire/lot1/facture.pdf" --settings local.settings.json
 
     # 3. Une valeur fictive précise d'un document (éventuellement à une page donnée)
-    python reidentify.py document "pseudonymised/dentaire/lot1/facture.pdf" --valeur "MEYER" --page 1
+    python reidentify.py document "pseudonymised/year=2026/month=10/day=18/hour=14/domain=dentaire/lot1/facture.pdf" --valeur "MEYER" --page 1
 
 Chaîne de résolution : occurrences (document, page, position, valeur fictive) -> jeton ->
 mappings (valeur d'origine chiffrée) -> déchiffrement avec la clé de Key Vault.
@@ -38,7 +38,7 @@ def main() -> int:
     tokens = sub.add_parser("jetons", help="jetons -> valeurs d'origine")
     tokens.add_argument("tokens", nargs="+")
     document = sub.add_parser("document", help="valeurs remplacées d'un document publié")
-    document.add_argument("chemin", help="chemin du document publié, ex. pseudonymised/dentaire/lot1/facture.pdf")
+    document.add_argument("chemin", help="chemin du document publié, ex. pseudonymised/year=2026/month=10/day=18/hour=14/domain=dentaire/lot1/facture.pdf")
     document.add_argument("--valeur", help="ne garder que cette valeur fictive")
     document.add_argument("--page", type=int, help="ne garder que cette page (à partir de 1)")
     for p in (tokens, document):

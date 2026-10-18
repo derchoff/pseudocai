@@ -138,7 +138,10 @@ def main(base: Path) -> None:
         except (OSError, ValueError):
             continue
         rel = jp.parent.relative_to(base)
-        type_folder = rel.parts[0] if rel.parts else ""
+        # Dossier du type : niveau domain=<type> (year=…/hour=…/domain=…/) ; ancienne arborescence
+        # (<type>/…) : premier niveau.
+        domains = [p.removeprefix("domain=") for p in rel.parts if p.startswith("domain=")]
+        type_folder = domains[0] if domains else (rel.parts[0] if rel.parts and "=" not in rel.parts[0] else "")
         is_mail = jp.name == "motif.json"
         original = original_of(jp)
         report = data.get("rapport") or {}

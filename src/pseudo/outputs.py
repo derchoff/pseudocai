@@ -1,9 +1,17 @@
 """Écriture des résultats, commune aux trois étapes (routage, préparation image, pseudonymisation).
 
-Arborescence produite (le chemin d'origine est conservé sous le dossier du type) :
+Arborescence produite : date et heure de DÉPOSE dans incoming/ (fuseau DEPOSIT_TIMEZONE), puis
+dossier du type reconnu, puis chemin d'origine conservé :
 
-    pseudonymised/<dossier du type>/<chemin>.<ext d'origine> | <chemin>.pseudonymise.txt | <chemin>.rapport.json
-    quarantine/<dossier du type>/<chemin>.<ext d'origine> (original) | <chemin>.<ext>.motif.json
+    pseudonymised/year=AAAA/month=MM/day=JJ/hour=HH/domain=<dossier du type>/<chemin>.<ext d'origine>
+                                                         | <chemin>.pseudonymise.txt | <chemin>.rapport.json
+    quarantine/year=AAAA/month=MM/day=JJ/hour=HH/domain=<dossier du type>/<chemin>.<ext d'origine> (original)
+                                                         | <chemin>.<ext>.motif.json
+
+Les préfixes « year= », « month= »… rendent le chemin lisible et sont reconnus comme partitions
+par les outils d'analyse (Spark, Synapse, Fabric). Une date de dépose différente (fichier redéposé)
+donne un autre dossier : les sorties du traitement précédent sont alors supprimées, comme pour un
+changement de type.
 
 Chaque étape qui termine un document (succès ou quarantaine) :
 - écrit ses fichiers avec les métadonnées de classification ;
@@ -24,6 +32,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Protocol
+from zoneinfo import ZoneInfo
 
 from .classification import Classification
 from .config import Settings
@@ -80,6 +89,18 @@ class OutputFile:
     content_type: str
 
 
+def deposit_folder(job: Job, dossier: str, settings: Settings) -> str:
+    """Dossier de sortie d'un document : year=AAAA/month=MM/day=JJ/hour=HH/domain=<dossier du type>,
+    d'après sa date de dépose dans incoming/ dans le fuseau DEPOSIT_TIMEZONE. Sans dossier de type
+    (classification désactivée), le niveau domain= est omis."""
+    deposited = datetime.fromisoformat(job.deposited_at or job.received_at)
+    if deposited.tzinfo is None:
+        deposited = deposited.replace(tzinfo=timezone.utc)
+    local = deposited.astimezone(ZoneInfo(settings.deposit_timezone))
+    folder = f"year={local:%Y}/month={local:%m}/day={local:%d}/hour={local:%H}"
+    return f"{folder}/domain={dossier}" if dossier else folder
+
+
 def output_names(source_name: str, folder: str = "") -> dict[str, str]:
     """Noms des sorties d'un document : document, texte, rapport et motif de quarantaine."""
     prefix = f"{folder}/" if folder else ""
@@ -115,7 +136,7 @@ def publish(
     """Écrit les sorties pseudonymisées (document au format d'origine, texte, rapport) et les
     occurrences (zones remplacées) qui permettent la ré-identification par document et position."""
     settings = ctx.settings
-    names = output_names(job.source_name, classification.dossier)
+    names = output_names(job.source_name, deposit_folder(job, classification.dossier, settings))
     files = [
         OutputFile(names["document"], document, CONTENT_TYPES[job.source_format]),
         OutputFile(names["text"], text.encode("utf-8"), "text/plain; charset=utf-8"),
@@ -163,7 +184,7 @@ def quarantine(
 ) -> list[str]:
     """Copie l'original en quarantaine avec le motif (le document d'entrée reste dans incoming/)."""
     settings = ctx.settings
-    names = output_names(job.source_name, classification.dossier)
+    names = output_names(job.source_name, deposit_folder(job, classification.dossier, settings))
     motif = {
         "motifs": reasons,
         "etape": stage,

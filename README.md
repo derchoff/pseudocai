@@ -27,7 +27,7 @@ incoming/ ─► Event Grid ─► [incoming-events] ─► ① Routage (Functio
                                                                                                  ▼
                          ③ Pseudonymisation (Function principale) : OCR, agents IA de détection
                            et de vérification, filets regex + Language, jetons, classification,
-                           caviardage ─► pseudonymised/<type>/  |  quarantine/<type>/
+                           caviardage ─► pseudonymised/ | quarantine/  year=…/month=…/day=…/hour=…/domain=<type>/
 ```
 
 - **Le document ne bouge pas** : il reste dans `incoming/`. Seuls des **messages** (jobs)

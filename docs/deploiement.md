@@ -225,7 +225,8 @@ az cognitiveservices account list -g rg-pseudo-dev --query "[].{nom:name, type:k
 | `CLASSIFICATION_MIN_CONFIDENCE` | 0.6 | Confiance minimale du type principal. En dessous, le document va dans `non-classe/`. |
 | `CLASSIFICATION_SECONDARY_MIN_CONFIDENCE` | 0.3 | Confiance minimale pour conserver un type secondaire dans le rapport, la trace et les métadonnées. |
 | `CLASSIFICATION_MAX_CHARS` | 6000 | Nombre de caractères du texte pseudonymisé envoyés à l'agent de classification. |
-| `UNCLASSIFIED_FOLDER` | non-classe | Nom du dossier des documents dont le type n'a pas pu être déterminé. |
+| `UNCLASSIFIED_FOLDER` | non-classe | Nom du dossier des documents dont le type n'a pas pu être déterminé (`domain=non-classe/`). |
+| `DEPOSIT_TIMEZONE` | Europe/Paris | Fuseau horaire (IANA) des dossiers `year=/month=/day=/hour=`, calculés d'après la date de dépose dans `incoming/` (variable Terraform `deposit_timezone`). |
 | `IMAGE_MAX_PIXELS` | 50000000 | Au-delà, l'image est refusée (`image_trop_grande`). Protège la mémoire. |
 | `IMAGE_MIN_SHORT_SIDE` | 1000 | Côté court minimal en pixels, sinon quarantaine (`image_resolution_insuffisante`). |
 | `IMAGE_BLUR_THRESHOLD` | 60 | Netteté minimale (variance du laplacien, mesurée à 1 600 px), sinon quarantaine (`image_floue`). |
@@ -251,7 +252,7 @@ préparation, l'app principale pour le rendu de la sortie.
 
 **Pour désactiver**, mettre `enable_image_processing = false` puis relancer `deploy.ps1`. L'app
 images est supprimée et Event Grid ne transmet plus les images. Une image renommée en `.pdf`
-est traitée comme un PDF : sa lecture échoue et elle part en `quarantine/non-classe/` avec le
+est traitée comme un PDF : sa lecture échoue et elle part en `quarantine/…/domain=non-classe/` avec le
 motif `pdf_illisible`.
 
 ## Installer dans un resource group et sur un storage existants
@@ -438,3 +439,12 @@ données et sa règle de purge, puis recrée la rubrique Event Grid sur le nouve
 | Fichiers intermédiaires des jobs : `work/<job>/` devient `work/jobs/<job>/` | La règle `purge-work` vise désormais `work/jobs/` et `work/mails/`, et une règle `purge-json-metadata` garde `work/json-metadata/` 7 jours. Les fichiers d'un ancien traitement interrompu restés directement sous `work/<job>/` ne sont plus purgés automatiquement : les supprimer une fois, après le déploiement. |
 | Mails : texte du mail dans `text-jobs`, découpage sans agent IA | Rien à faire : `split_mail` envoie désormais le texte du mail dans `text-jobs`. Un mail découpé par l'ancienne version (déjà en cours au moment du déploiement) peut ne jamais être finalisé : le redéposer. |
 | Mails : dossier nommé d'après le fichier `.eml` | Les nouveaux mails sont publiés dans `<type>/<chemin>/<nom du .eml>/` au lieu de `<type>/mail-<date>-<empreinte>/`. Les dossiers `mail-…` déjà publiés restent en place : un mail redéposé est publié dans le nouveau dossier, et l'ancien est à supprimer à la main. |
+
+## Mise à jour : dossiers par date de dépose
+
+| Changement | Action |
+|---|---|
+| Sorties rangées sous `year=AAAA/month=MM/day=JJ/hour=HH/domain=<type>/<chemin>` (date et heure de dépose dans `incoming/`, heure de Paris) au lieu de `<type>/<chemin>`, dans `pseudonymised/` **et** `quarantine/` | Redéployer le code (`deploy.ps1`). Les sorties déjà publiées restent dans l'ancienne arborescence : un document redéposé est publié dans la nouvelle, et ses anciennes sorties sont supprimées. Les outils qui lisent les sorties par type (filtre `dentaire/`…) doivent chercher le niveau `domain=dentaire/`. |
+| Nouvelle variable `deposit_timezone` (`Europe/Paris` par défaut), réglage `DEPOSIT_TIMEZONE` | Rien à faire, sauf pour un autre fuseau (`"UTC"`…). Nouvelle dépendance Python `tzdata` (installée par le déploiement). |
+| Un job en cours au moment du déploiement (créé par l'ancienne version) | Il n'a pas de date de dépose : l'heure de son routage la remplace. |
+

@@ -11,7 +11,7 @@
    « image-jobs ». La finalisation publie le mail quand toutes sont terminées.
 
 Le dossier publié porte le nom du fichier .eml d'origine, sans son extension, sous son chemin :
-incoming/lot1/Acte de deces - 9253367.eml -> pseudonymised/<type>/lot1/Acte de deces - 9253367/.
+incoming/lot1/Acte de deces - 9253367.eml -> pseudonymised/<date>/domain=<type>/lot1/Acte de deces - 9253367/.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def handle_mail_job(body: bytes | str, runtime) -> list[tuple[str, str]]:
         child = Job(
             job_id=str(uuid.uuid4()), document_id=part_document_id, source_container=settings.work_container,
             source_name=source_name, source_format=attachment.fmt, origin=origin, received_at=job.received_at,
-            parent={"mail": ws.prefix, "part": attachment.index},
+            parent={"mail": ws.prefix, "part": attachment.index}, deposited_at=job.deposited_at,
         )
         children.append((QUEUE_PDF if origin == ORIGIN_PDF else QUEUE_IMAGE, child.to_json()))
     # État écrit AVANT l'envoi des tâches : chacune le relit.
@@ -81,7 +81,7 @@ def handle_mail_job(body: bytes | str, runtime) -> list[tuple[str, str]]:
     text_job = Job(
         job_id=str(uuid.uuid4()), document_id=f"{job.document_id}-texte", source_container=job.source_container,
         source_name=job.source_name, source_format=job.source_format, origin=ORIGIN_MAIL_TEXT,
-        received_at=job.received_at, parent={"mail": ws.prefix, "part": TEXT_PART},
+        received_at=job.received_at, parent={"mail": ws.prefix, "part": TEXT_PART}, deposited_at=job.deposited_at,
     )
     log.info("Mail découpé doc=%s pieces=%d", job.document_id, len(parts))
     return [(QUEUE_TEXT, text_job.to_json())] + children

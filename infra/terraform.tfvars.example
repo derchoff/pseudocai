@@ -39,6 +39,9 @@ incoming_retention_days      = 7
 work_retention_days         = 1
 quarantine_retention_days   = 30
 
+# Dossiers de sortie : year=AAAA/month=MM/day=JJ/hour=HH/domain=<type>, d'après la date de dépose
+deposit_timezone = "Europe/Paris"
+
 # Mails .eml : un dossier pseudonymisé par mail (corps, en-têtes, pièces jointes)
 mail_image_min_side    = 300 # images de mail plus petites sur un côté : retirées (logos, icônes)
 enable_mail_processing = true

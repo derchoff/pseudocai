@@ -4,13 +4,15 @@
     image (si activé)           -> job « image-jobs » (préparation, puis « pdf-jobs »)
     mail .eml (si activé)       -> job « mail-jobs »  (découpage, pièces jointes, dossier par mail)
     image ou mail (traitement désactivé), format inconnu, fichier trop volumineux
-                                -> quarantine/non-classe/
+                                -> quarantine/…/domain=non-classe/
 
 Le format est déduit uniquement de l'extension (voir formats.py) : un fichier dont le contenu ne
 correspond pas à son extension échouera à la lecture, à l'étape suivante, et partira en quarantaine.
 """
 
 from __future__ import annotations
+
+from datetime import timezone
 
 import logging
 from dataclasses import dataclass
@@ -63,7 +65,10 @@ def route_event(body: bytes | str, ctx: StorageContext) -> RouteResult:
         log.info("JSON de métadonnées ignoré (JSON_METADATA_ENABLED=false)")
         return RouteResult("ignored")
     origin = {PDF: ORIGIN_PDF, MAIL: ORIGIN_MAIL, JSON: ORIGIN_JSON}.get(fmt) or (ORIGIN_IMAGE if is_image(fmt) else None)
-    job = Job.new(event.url, event.container, event.name, fmt or "inconnu", origin or "inconnu")
+    properties = blob.get_blob_properties()
+    job = Job.new(
+        event.url, event.container, event.name, fmt or "inconnu", origin or "inconnu", _deposited_at(properties)
+    )
     if origin == ORIGIN_JSON:
         # Le JSON est rattaché à son document : même identifiant (chemin du document = sans .json).
         job.document_id = document_id(event.url[: -len(".json")])
@@ -75,7 +80,7 @@ def route_event(body: bytes | str, ctx: StorageContext) -> RouteResult:
         reason = "traitement_images_desactive"
     elif origin == ORIGIN_MAIL and not settings.mail_processing_enabled:
         reason = "traitement_mails_desactive"
-    elif blob.get_blob_properties().size > settings.max_file_mb * 1024 * 1024:
+    elif properties.size > settings.max_file_mb * 1024 * 1024:
         reason = "fichier_trop_volumineux"
     if reason:
         quarantine(
@@ -93,6 +98,18 @@ def route_event(body: bytes | str, ctx: StorageContext) -> RouteResult:
     queue = {ORIGIN_PDF: QUEUE_PDF, ORIGIN_IMAGE: QUEUE_IMAGE, ORIGIN_MAIL: QUEUE_MAIL, ORIGIN_JSON: QUEUE_TEXT}[origin]
     log.info("Document routé doc=%s format=%s file=%s job=%s", job.document_id, fmt, queue, job.job_id)
     return RouteResult("routed", queue=queue, job=job)
+
+
+def _deposited_at(properties) -> str | None:
+    """Date et heure de dépose du fichier dans incoming/ (ISO 8601, UTC) : date de dernière écriture
+    du blob, qui suit un redépôt du même nom (la date de création, elle, reste celle du premier
+    dépôt). None si les propriétés n'en donnent pas : l'heure de routage la remplace."""
+    when = getattr(properties, "last_modified", None) or getattr(properties, "creation_time", None)
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return when.astimezone(timezone.utc).isoformat()
 
 
 def _same_account(event_url: str, account_url: str | None) -> bool:

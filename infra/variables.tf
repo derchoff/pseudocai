@@ -326,3 +326,9 @@ variable "log_retention_days" {
   type        = number
   default     = 90
 }
+
+variable "deposit_timezone" {
+  description = "Fuseau horaire (IANA) des dossiers de sortie year=/month=/day=/hour=, calculés d'après la date de dépose du document dans le container d'entrée."
+  type        = string
+  default     = "Europe/Paris"
+}

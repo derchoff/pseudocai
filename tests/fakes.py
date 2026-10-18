@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from urllib.parse import urlparse
 
@@ -13,6 +14,11 @@ from pseudo.router import QUEUE_IMAGE, QUEUE_MAIL, QUEUE_PDF, route_event
 from pseudo.runtime import Runtime
 
 
+# Date de dépose de tous les fichiers des tests : 14 mars 2026, 9 h 26 UTC = 10 h 26 à Paris.
+DEPOSITED = datetime(2026, 3, 14, 9, 26, tzinfo=timezone.utc)
+DEPOSIT = "year=2026/month=03/day=14/hour=10"  # dossiers de sortie correspondants (Europe/Paris)
+
+
 class FakeBlobService:
     """Stockage Blob en mémoire : {(container, nom): {"data": bytes, "metadata": dict}}."""
 
@@ -20,9 +26,9 @@ class FakeBlobService:
         """Blobs en mémoire : (container, nom) -> contenu et métadonnées."""
         self.blobs: dict[tuple[str, str], dict] = {}
 
-    def put(self, container: str, name: str, data: bytes) -> None:
-        """Dépose un fichier."""
-        self.blobs[(container, name)] = {"data": data, "metadata": {}}
+    def put(self, container: str, name: str, data: bytes, deposited: datetime = DEPOSITED) -> None:
+        """Dépose un fichier (date de dépose : DEPOSITED par défaut)."""
+        self.blobs[(container, name)] = {"data": data, "metadata": {}, "deposited": deposited}
 
     def get_blob_client(self, container, name):
         """Client d'un blob : exists, propriétés, téléchargement, suppression."""
@@ -44,7 +50,7 @@ class FakeBlobService:
 
         return SimpleNamespace(
             exists=lambda: key in blobs,
-            get_blob_properties=lambda: SimpleNamespace(size=len(blobs[key]["data"])),
+            get_blob_properties=lambda: SimpleNamespace(size=len(blobs[key]["data"]), last_modified=blobs[key].get("deposited", DEPOSITED)),
             download_blob=download_blob,
             delete_blob=delete_blob,
         )

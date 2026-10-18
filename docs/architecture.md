@@ -66,7 +66,7 @@ Cosmos DB et les services IA.
 
 | Étape | Function App | Déclencheur | Rôle |
 |---|---|---|---|
-| ① Routage | principale (`functions_main.py`) | `incoming-events` (Event Grid) | Déduit le format **uniquement de l'extension** et envoie un job vers `pdf-jobs` ou `image-jobs`. Les extensions non prises en charge, les images quand leur traitement est désactivé et les fichiers trop volumineux vont en `quarantine/non-classe/`. |
+| ① Routage | principale (`functions_main.py`) | `incoming-events` (Event Grid) | Déduit le format **uniquement de l'extension** et envoie un job vers `pdf-jobs` ou `image-jobs`. Les extensions non prises en charge, les images quand leur traitement est désactivé et les fichiers trop volumineux vont en `quarantine/…/domain=non-classe/`. |
 | ② Préparation des images | images (`functions_images.py`) | `image-jobs` | Décode l'image, la contrôle, prépare une copie redressée pour l'OCR et l'emballe en PDF dans `work/<job>/`. Transmet ensuite le job à `pdf-jobs`. |
 | ①bis Découpage des mails | principale (`functions_main.py`, `split_mail`) | `mail-jobs` | Découpe un `.eml`, **sans agent IA** : une tâche « texte du mail » dans `text-jobs`, une tâche par pièce jointe ; voir [Mails](#mails-eml). |
 | ①ter Textes | principale (`functions_main.py`, `pseudonymise_text`) | `text-jobs` | Pseudonymise le texte d'un mail (en-têtes, objet, noms des pièces, corps) ou le JSON de la GED d'un document, puis le rattache ; voir [Mails](#mails-eml) et [JSON de métadonnées](#json-de-métadonnées-de-la-ged). |
@@ -103,13 +103,13 @@ sequenceDiagram
         I->>L: lecture de l'image
         I->>I: EXIF, contrôles qualité, copie redressée + améliorée
         alt image floue, trop petite, illisible
-            I->>O: quarantine/non-classe/ (original + motif)
+            I->>O: quarantine/…/domain=non-classe/ (original + motif)
         else
             I->>W: render.pdf · ocr.pdf · transforms.json
             I->>P: job + chemins des fichiers préparés (file pdf-jobs)
         end
     else format inconnu, images désactivées, trop volumineux
-        R->>O: quarantine/non-classe/ (original + motif)
+        R->>O: quarantine/…/domain=non-classe/ (original + motif)
     end
     P->>C: dernière trace du document (job déjà traité ? sorties précédentes)
     P->>L: relecture de l'original
@@ -172,7 +172,7 @@ Pour une image, l'étape ② produit **trois fichiers** dans `work/<job_id>/` :
 flowchart LR
     O[Photo d'origine<br/>en biais, sombre] --> D[Décodage<br/>EXIF, HEIC, TIFF multipage]
     D --> Q{Contrôles qualité<br/>flou, résolution}
-    Q -- échec --> QZ[[quarantine/non-classe/]]
+    Q -- échec --> QZ[[quarantine/…/domain=non-classe/]]
     Q -- ok --> R[render.pdf<br/>cadrage d'origine]
     Q -- ok --> G[Contour du document<br/>+ inclinaison]
     G --> C[ocr.pdf<br/>copie redressée, contrastée]
@@ -215,7 +215,7 @@ image lui arrive déjà emballée par l'étape ②, avec deux pièces propres au
 flowchart TD
     A{Origine} -- PDF --> B{Vrai PDF ?<br/>non chiffré ?<br/>≤ MAX_PAGES ?}
     A -- image préparée --> IMG[render.pdf : toutes les pages<br/>traitées comme scannées<br/>OCR sur ocr.pdf → positions × M⁻¹]
-    B -- non --> QN[[quarantine/non-classe/]]
+    B -- non --> QN[[quarantine/…/domain=non-classe/]]
     B -- oui --> C[bake : formulaires et annotations<br/>deviennent du contenu]
     C --> D{Pour chaque page :<br/>texte ≥ 30 car. et<br/>images < 60 % ?}
     D -- natif --> E1[Couche texte PyMuPDF<br/>positions au caractère]
@@ -223,7 +223,7 @@ flowchart TD
     E3 --> E4[Garde uniquement les mots OCR<br/>hors couche texte = texte des images<br/>logo, tampon, carte collée]
     D -- scanné --> E2[OCR Document Intelligence<br/>mots + polygones + confiance]
     E1 & E4 & E2 & IMG --> HW{Écriture manuscrite<br/>détectée par l'OCR ?}
-    HW -- "oui + HANDWRITING_POLICY=quarantaine" --> QH[[quarantine/non-classe/<br/>motif manuscrit_detecte]]
+    HW -- "oui + HANDWRITING_POLICY=quarantaine" --> QH[[quarantine/…/domain=non-classe/<br/>motif manuscrit_detecte]]
     HW -- "non, ou politique « traiter »" --> F[Lignes numérotées<br/>p1-l7 texte, p1-i3 image]
     F --> G[Agent IA de détection]
     F --> H[Regex : NIR clé valide, e-mail,<br/>téléphone FR, date de naissance]
@@ -260,7 +260,7 @@ masqué, et un nom mal lu reçoit un jeton différent d'un document à l'autre. 
 
 | Valeur | Comportement |
 |---|---|
-| `quarantaine` (défaut) | Dès qu'un mot manuscrit est détecté, sur n'importe quelle page (y compris dans une image incrustée d'une page native), le document part en `quarantine/non-classe/` avec le motif `manuscrit_detecte`. Le contrôle a lieu **juste après l'OCR, avant tout appel aux agents IA** : le texte manuscrit n'est envoyé à aucun modèle. |
+| `quarantaine` (défaut) | Dès qu'un mot manuscrit est détecté, sur n'importe quelle page (y compris dans une image incrustée d'une page native), le document part en `quarantine/…/domain=non-classe/` avec le motif `manuscrit_detecte`. Le contrôle a lieu **juste après l'OCR, avant tout appel aux agents IA** : le texte manuscrit n'est envoyé à aucun modèle. |
 | `traiter` | Le document suit le circuit normal. Le nombre de mots manuscrits est seulement noté dans le rapport. |
 
 Dans les deux cas, le rapport et la trace contiennent `mots_manuscrits`, `pages_manuscrites` et
@@ -269,13 +269,16 @@ c'est voulu.
 
 ## Mails (.eml)
 
+`<date>` désigne les dossiers `year=AAAA/month=MM/day=JJ/hour=HH` de la date de dépose (voir
+[Arborescence des sorties](#arborescence-des-sorties)).
+
 Activés par la variable Terraform `enable_mail_processing`. Un mail produit **un dossier**, qui
 porte le **nom du fichier `.eml` d'origine sans son extension**, sous son chemin dans `incoming/`,
 rangé comme les autres documents par type (`incoming/lot1/Acte de deces - 9253367.eml` →
-`pseudonymised/<type>/lot1/Acte de deces - 9253367/`) :
+`pseudonymised/year=2026/month=10/day=18/hour=14/domain=<type>/lot1/Acte de deces - 9253367/`) :
 
 ```
-pseudonymised/<type>/<chemin>/<nom du .eml>/
+pseudonymised/<date>/domain=<type>/<chemin>/<nom du .eml>/
 ├── mail.json        expéditeur, destinataires, date, objet : pseudonymisés
 ├── body.html        corps pseudonymisé (body.txt si le mail n'a pas de version HTML)
 ├── body.pseudonymise.txt   corps en texte brut, sans balises, même pour un mail HTML
@@ -283,7 +286,7 @@ pseudonymised/<type>/<chemin>/<nom du .eml>/
 ├── <pièce>.pseudonymise.txt  texte de chaque pièce, comme pour un document seul
 ├── <nom du .eml>.json        JSON de métadonnées de la GED, s'il existe (pseudonymisé)
 └── rapport.json     classement, rapport du corps et de chaque pièce
-quarantine/<type>/<chemin>/<nom du .eml>/
+quarantine/<date>/domain=<type>/<chemin>/<nom du .eml>/
 ├── <mail d'origine>.eml
 └── motif.json
 ```
@@ -307,7 +310,7 @@ flowchart LR
     IN[incoming/ *.eml] --> R[route_incoming]
     R --> QM[[mail-jobs]]
     QM --> S[split_mail<br/>lecture du .eml, sans agent IA]
-    S -- "pièce non prise en charge,<br/>trop de pièces" --> QQ[[quarantine/non-classe/&lt;nom du .eml&gt;/]]
+    S -- "pièce non prise en charge,<br/>trop de pièces" --> QQ[[quarantine/…/domain=non-classe/&lt;nom du .eml&gt;/]]
     S -- "texte du mail" --> QT[[text-jobs]]
     QT --> T[En-têtes + objet + noms des pièces<br/>+ corps : UN passage dans le pipeline]
     S -- "une tâche par pièce" --> QP[[pdf-jobs / image-jobs]]
@@ -369,8 +372,8 @@ même contenu).
 
 | Situation | Où va le JSON |
 |---|---|
-| Document publié, JSON pseudonymisé | À côté du document (`<type>/<chemin>/facture.pdf.json`), ou dans le dossier du mail (`<nom du .eml>.json`). |
-| Document publié, JSON illisible ou en doute | `quarantine/<type>/…` : JSON d'origine + `<nom>.json.motif.json`. Le document reste publié ; pour un mail, le JSON **ne participe pas** au « tout ou rien ». |
+| Document publié, JSON pseudonymisé | À côté du document (`<date>/domain=<type>/<chemin>/facture.pdf.json`), ou dans le dossier du mail (`<nom du .eml>.json`). |
+| Document publié, JSON illisible ou en doute | `quarantine/<date>/domain=<type>/…` : JSON d'origine + `<nom>.json.motif.json`. Le document reste publié ; pour un mail, le JSON **ne participe pas** au « tout ou rien ». |
 | Document en quarantaine | À côté de l'original en quarantaine : JSON d'origine. |
 
 Le JSON pseudonymisé **reste dans `work/json-metadata/`** après la copie (règle de purge
@@ -562,7 +565,7 @@ de santé peut être à la fois DENTAIRE à 0,85 et OPTIQUE à 0,85.
 | **Type principal** | Le type de plus forte confiance, s'il atteint `CLASSIFICATION_MIN_CONFIDENCE` (0,6) et dépasse la confiance donnée à `NON_CLASSE`. C'est lui qui détermine le dossier. |
 | **Types secondaires** | Les autres types au-dessus de `CLASSIFICATION_SECONDARY_MIN_CONFIDENCE` (0,3). Ils sont conservés dans le rapport, la trace et les métadonnées, mais ne déterminent pas le dossier. |
 | **`multi_type`** | Vrai si au moins deux types atteignent le seuil principal (document mixte). Le fichier n'est **pas** copié dans plusieurs dossiers. |
-| **`NON_CLASSE`** | Aucun type au-dessus du seuil, réponse « non classable » de l'agent ou erreur d'appel. Le document va dans `non-classe/` (`UNCLASSIFIED_FOLDER`), **sans** quarantaine. |
+| **`NON_CLASSE`** | Aucun type au-dessus du seuil, réponse « non classable » de l'agent ou erreur d'appel. Le document va dans `domain=non-classe/` (`UNCLASSIFIED_FOLDER`), **sans** quarantaine. |
 
 | Statut (`classification.statut`) | Signification |
 |---|---|
@@ -570,27 +573,51 @@ de santé peut être à la fois DENTAIRE à 0,85 et OPTIQUE à 0,85.
 | `non_classe` | L'agent a répondu, mais aucun type n'atteint le seuil. |
 | `erreur` | L'appel à l'agent a échoué. La pseudonymisation n'est pas bloquée. |
 | `non_applicable` | Document rejeté avant l'étape ③ (format inconnu, illisible, chiffré, trop volumineux, image floue…) : dossier `non-classe`. |
-| `desactivee` | `CLASSIFICATION_ENABLED=false` : sorties à la racine des containers, sans sous-dossier. |
+| `desactivee` | `CLASSIFICATION_ENABLED=false` : sorties directement sous `year=…/hour=…/`, sans niveau `domain=`. |
 
-Arborescence produite, avec le chemin d'origine conservé sous le dossier du type et le
-document au **format d'origine** :
+### Arborescence des sorties
+
+Les sorties sont rangées par **date et heure de dépose** du document dans `incoming/`, puis par
+**type** reconnu (`domain=`), puis sous le **chemin d'origine**, avec le document au **format
+d'origine** :
+
+```
+pseudonymised/year=AAAA/month=MM/day=JJ/hour=HH/domain=<dossier du type>/<chemin>
+quarantine/year=AAAA/month=MM/day=JJ/hour=HH/domain=<dossier du type>/<chemin>
+```
+
+Exemple, pour `incoming/lot1/facture.pdf` déposé le 18 octobre 2026 à 14 h 05 (heure de Paris)
+et classé dentaire :
 
 ```
 pseudonymised/
-├── dentaire/       <chemin>.pdf|.jpg|… · <chemin>.pseudonymise.txt · <chemin>.rapport.json
-├── optique/
-├── kinesitherapie/
-├── psychologie/
-├── carte-grise/
-├── acte-naissance/
-├── acte-deces/
-├── bia/
-└── non-classe/
+└── year=2026/
+    └── month=10/
+        └── day=18/
+            └── hour=14/
+                ├── domain=dentaire/
+                │   └── lot1/   facture.pdf · facture.pseudonymise.txt · facture.rapport.json
+                ├── domain=optique/ · domain=kinesitherapie/ · domain=bia/ · …
+                └── domain=non-classe/
 quarantine/
-├── dentaire/       <chemin>.<ext> (original) · <chemin>.<ext>.motif.json
-├── …
-└── non-classe/     formats inconnus, PDF illisibles ou chiffrés, images floues, trop volumineux…
+└── year=2026/month=10/day=18/hour=14/
+    ├── domain=dentaire/   lot1/facture.pdf (original) · lot1/facture.pdf.motif.json
+    ├── …
+    └── domain=non-classe/ formats inconnus, PDF illisibles ou chiffrés, images floues, trop volumineux…
 ```
+
+| Niveau | Valeur |
+|---|---|
+| `year=`, `month=`, `day=`, `hour=` | Date et heure de **dépose** dans `incoming/`, lues dans les propriétés du fichier (date de dernière écriture) par le routeur, dans le fuseau `DEPOSIT_TIMEZONE` (`Europe/Paris` par défaut, heure d'été comprise). Mois, jour et heure sur deux chiffres. |
+| `domain=` | Dossier du type principal reconnu par l'agent de classification (`Dossier` du référentiel `types-documents.md`), `non-classe` sinon. Absent si la classification est désactivée. |
+| `<chemin>` | Chemin d'origine dans `incoming/`, conservé : deux `facture.pdf` de lots différents ne s'écrasent pas. |
+
+Les préfixes `year=`, `month=`… rendent le chemin lisible et sont reconnus comme partitions par
+les outils d'analyse (Spark, Synapse, Fabric). La date de dépose est portée par le job et reprise
+telle quelle par toutes les étapes (pièces jointes d'un mail comprises) : un message relivré
+retombe dans le même dossier. Un fichier **redéposé** plus tard sous le même nom part dans le
+dossier de sa nouvelle date, et les sorties du traitement précédent sont supprimées (comme pour
+un changement de type).
 
 La classification est conservée à trois endroits :
 - dans le **rapport** ou le **motif** JSON (version complète) ;

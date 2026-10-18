@@ -54,10 +54,17 @@ class Job:
     # "status": "quarantine" si la préparation de l'image l'a refusée, "reasons", "report"}.
     # Son résultat est écrit dans work/ et le mail est publié en entier par la finalisation.
     parent: dict | None = None
+    # Date et heure de dépose du document dans incoming/ (ISO 8601, UTC), lue par le routeur dans
+    # les propriétés du blob ; elle donne les dossiers year=/month=/day=/hour= des sorties.
+    # Absente d'un job créé par une version précédente : received_at la remplace.
+    deposited_at: str | None = None
 
     @classmethod
-    def new(cls, source_url: str, container: str, name: str, source_format: str, origin: str) -> "Job":
+    def new(
+        cls, source_url: str, container: str, name: str, source_format: str, origin: str, deposited_at: str | None = None
+    ) -> "Job":
         """Nouveau job pour un fichier déposé : identifiant unique et empreinte stable du document."""
+        received_at = datetime.now(timezone.utc).isoformat()
         return cls(
             job_id=str(uuid.uuid4()),
             document_id=document_id(source_url),
@@ -65,7 +72,8 @@ class Job:
             source_name=name,
             source_format=source_format,
             origin=origin,
-            received_at=datetime.now(timezone.utc).isoformat(),
+            received_at=received_at,
+            deposited_at=deposited_at or received_at,
         )
 
     def to_json(self) -> str:

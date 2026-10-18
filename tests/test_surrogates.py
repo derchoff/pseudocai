@@ -9,7 +9,7 @@ import pymupdf
 import pytest
 from PIL import Image
 
-from fakes import FakeBlobService, MemoryStore, run_chain
+from fakes import DEPOSIT as D, FakeBlobService, MemoryStore, run_chain
 from pseudo.config import Settings
 from pseudo.fields import FieldCatalogError, parse_fields
 from pseudo.geometry import apply, load_geometry
@@ -162,15 +162,15 @@ def test_photo_is_published_with_realistic_values_and_pixel_positions(settings):
 
     status, _ = run_chain(runtime, "lot1/photo.jpg", prepare_image=prepare)
     assert status == "ok"
-    text = blobs.data("pseudonymised", "lot1/photo.pseudonymise.txt").decode()
+    text = blobs.data("pseudonymised", f"{D}/lot1/photo.pseudonymise.txt").decode()
     assert "DUPONT" not in text and "[NOM_" not in text
 
     occurrence = next(o for o in store.occurrences if o["type"] == "NOM")
     assert occurrence["valeur_fictive"] in text
-    assert occurrence["document"] == "pseudonymised/lot1/photo.jpg" and occurrence["position_pixels"]
+    assert occurrence["document"] == f"pseudonymised/{D}/lot1/photo.jpg" and occurrence["position_pixels"]
 
     # La zone de « DUPONT » n'est plus grise : fond clair et texte sombre (valeur fictive lisible).
-    out = np.asarray(Image.open(io.BytesIO(blobs.data("pseudonymised", "lot1/photo.jpg"))).convert("L"))
+    out = np.asarray(Image.open(io.BytesIO(blobs.data("pseudonymised", f"{D}/lot1/photo.jpg"))).convert("L"))
     word = next(w for _, ws in truth_words_px() for w in ws if w.text == "DUPONT")
     x0, y0, x1, y1 = word.rect
     samples = [

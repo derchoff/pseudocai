@@ -9,7 +9,7 @@ import pymupdf
 import pytest
 from PIL import Image, ImageFilter
 
-from fakes import FakeBlobService, MemoryStore, event, run_chain
+from fakes import DEPOSIT as D, FakeBlobService, MemoryStore, event, run_chain
 from pseudo.config import Settings
 from pseudo.extraction import extract_native_page
 from pseudo.formats import BMP, HEIF, JPEG, PDF, PNG, TIFF, WEBP, format_from_name
@@ -154,7 +154,7 @@ def test_image_renamed_as_pdf_goes_to_quarantine(settings):
     runtime = image_runtime(settings, photo, name="lot1/photo-renommee.pdf")
     status, messages = run_chain(runtime, "lot1/photo-renommee.pdf")
     assert status == "quarantine" and json.loads(messages[0])["origin"] == "pdf"
-    motif = json.loads(runtime.blob_service.data("quarantine", "non-classe/lot1/photo-renommee.pdf.motif.json"))
+    motif = json.loads(runtime.blob_service.data("quarantine", f"{D}/domain=non-classe/lot1/photo-renommee.pdf.motif.json"))
     assert motif["motifs"] == ["pdf_illisible"] and motif["etape"] == "pseudonymisation"
     assert runtime.blob_service.names("pseudonymised") == []
 
@@ -166,7 +166,7 @@ def test_image_with_wrong_extension_goes_to_quarantine(settings):
     runtime = image_runtime(settings, buffer.getvalue(), name="lot1/scan.jpg")
     status, _ = run_chain(runtime, "lot1/scan.jpg", prepare_image=handle_image_job)
     assert status == "quarantine"
-    motif = json.loads(runtime.blob_service.data("quarantine", "non-classe/lot1/scan.jpg.motif.json"))
+    motif = json.loads(runtime.blob_service.data("quarantine", f"{D}/domain=non-classe/lot1/scan.jpg.motif.json"))
     assert motif["motifs"] == ["image_illisible"] and motif["etape"] == "preparation_image"
 
 
@@ -183,8 +183,8 @@ def test_router_quarantines_unknown_formats_and_disabled_images(settings, monkey
         if name.endswith(".motif.json")
     }
     assert motifs == {
-        "non-classe/photo.jpg.motif.json": ["traitement_images_desactive"],
-        "non-classe/archive.zip.motif.json": ["format_non_supporte"],
+        f"{D}/domain=non-classe/photo.jpg.motif.json": ["traitement_images_desactive"],
+        f"{D}/domain=non-classe/archive.zip.motif.json": ["format_non_supporte"],
     }
     assert {t["stage"] for t in ctx.mapping_store.traces} == {"routage"}
 
@@ -309,10 +309,10 @@ def test_photo_is_pseudonymised_in_its_original_format_and_framing(settings):
     status, messages = run_chain(runtime, "lot1/photo.jpg", prepare_image=prepare)
     assert status == "ok" and len(messages) == 2
     blobs = runtime.blob_service
-    assert blobs.names("pseudonymised") == ["lot1/photo.jpg", "lot1/photo.pseudonymise.txt", "lot1/photo.rapport.json"]
-    out = Image.open(io.BytesIO(blobs.data("pseudonymised", "lot1/photo.jpg")))
+    assert blobs.names("pseudonymised") == [f"{D}/lot1/photo.jpg", f"{D}/lot1/photo.pseudonymise.txt", f"{D}/lot1/photo.rapport.json"]
+    out = Image.open(io.BytesIO(blobs.data("pseudonymised", f"{D}/lot1/photo.jpg")))
     assert out.format == "JPEG" and out.size == PHOTO_SIZE and len(out.getexif()) == 0
-    text = blobs.data("pseudonymised", "lot1/photo.pseudonymise.txt").decode()
+    text = blobs.data("pseudonymised", f"{D}/lot1/photo.pseudonymise.txt").decode()
     assert "DUPONT" not in text and "[NOM_" in text
     assert ocr_holder["ocr"].calls == 1
     assert blobs.names("work") == []  # fichiers intermédiaires supprimés
@@ -332,7 +332,7 @@ def test_photo_is_pseudonymised_in_its_original_format_and_framing(settings):
     trace = runtime.mapping_store.traces[-1]
     assert (trace["origin"], trace["sourceFormat"], trace["stage"]) == ("image", "jpeg", "pseudonymisation")
     assert trace["preparation"]["pages_detail"][0]["perspective_corrigee"] is True
-    report = json.loads(blobs.data("pseudonymised", "lot1/photo.rapport.json"))
+    report = json.loads(blobs.data("pseudonymised", f"{D}/lot1/photo.rapport.json"))
     assert report["source"]["origine"] == "image"
 
 
@@ -342,8 +342,8 @@ def test_blurry_photo_goes_to_quarantine_unchanged(settings):
     status, _ = run_chain(runtime, "lot1/photo.jpg", prepare_image=handle_image_job)
     assert status == "quarantine"
     blobs = runtime.blob_service
-    assert blobs.names("quarantine") == ["non-classe/lot1/photo.jpg", "non-classe/lot1/photo.jpg.motif.json"]
-    assert blobs.data("quarantine", "non-classe/lot1/photo.jpg") == photo
-    motif = json.loads(blobs.data("quarantine", "non-classe/lot1/photo.jpg.motif.json"))
+    assert blobs.names("quarantine") == [f"{D}/domain=non-classe/lot1/photo.jpg", f"{D}/domain=non-classe/lot1/photo.jpg.motif.json"]
+    assert blobs.data("quarantine", f"{D}/domain=non-classe/lot1/photo.jpg") == photo
+    motif = json.loads(blobs.data("quarantine", f"{D}/domain=non-classe/lot1/photo.jpg.motif.json"))
     assert motif["motifs"] == ["image_floue"] and motif["etape"] == "preparation_image"
     assert blobs.names("work") == []

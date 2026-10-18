@@ -26,6 +26,7 @@ locals {
     JSON_METADATA_ENABLED       = tostring(var.enable_json_metadata)
     MAIL_IMAGE_MIN_SIDE         = tostring(var.mail_image_min_side)
     IMAGE_EXTENSIONS            = join(",", var.image_extensions)
+    DEPOSIT_TIMEZONE            = var.deposit_timezone
 
     COSMOS_ENDPOINT          = azurerm_cosmosdb_account.main.endpoint
     COSMOS_DATABASE          = azurerm_cosmosdb_sql_database.main.name

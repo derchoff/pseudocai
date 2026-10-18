@@ -23,6 +23,7 @@
     "IMAGE_PROCESSING_ENABLED": "true",
     "MAIL_PROCESSING_ENABLED": "true",
     "JSON_METADATA_ENABLED": "true",
+    "DEPOSIT_TIMEZONE": "Europe/Paris",
     "PSEUDO_OUTPUT_MODE": "substitution",
     "HANDWRITING_POLICY": "quarantaine"
   }

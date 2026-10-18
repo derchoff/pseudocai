@@ -138,6 +138,7 @@ class Settings:
     classification_secondary_min_confidence: float
     classification_max_chars: int
     unclassified_folder: str
+    deposit_timezone: str  # fuseau des dossiers year=/month=/day=/hour= (date de dépose dans incoming/)
 
     # Images (étape de préparation)
     image_processing_enabled: bool
@@ -222,6 +223,7 @@ class Settings:
             classification_secondary_min_confidence=_float("CLASSIFICATION_SECONDARY_MIN_CONFIDENCE", 0.3),
             classification_max_chars=_int("CLASSIFICATION_MAX_CHARS", 6000),
             unclassified_folder=_env("UNCLASSIFIED_FOLDER", "non-classe"),
+            deposit_timezone=_env("DEPOSIT_TIMEZONE", "Europe/Paris"),
             image_processing_enabled=_bool("IMAGE_PROCESSING_ENABLED", False),
             image_extensions=tuple(
                 e.strip().lower()
