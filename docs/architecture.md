@@ -205,7 +205,7 @@ Avec `IMAGE_ENHANCE_FOR_OCR=false`, aucune copie n'est produite : l'OCR lit dire
 
 ## Pipeline de pseudonymisation (étape ③)
 
-Le pipeline ([src/pseudo/pipeline.py](../src/pseudo/pipeline.py)) ne connaît que des PDF. Une
+Le pipeline ([src/pseudo/pipeline/](../src/pseudo/pipeline/runner.py)) ne connaît que des PDF. Une
 image lui arrive déjà emballée par l'étape ②, avec deux pièces propres aux images
 ([src/pseudo/prepared_image.py](../src/pseudo/prepared_image.py)) :
 - **son OCR** : la copie redressée, avec les positions reportées sur l'original ;
@@ -516,7 +516,7 @@ noms étant limitées, deux personnes différentes peuvent recevoir le même fau
 | `geometry.py` | Homographies en Python pur, géométrie des pages préparées | ②③ |
 | `prepared_image.py` | Entrée « image préparée » de l'étape ③ : OCR transformé, rendu sur l'image d'origine | ③ |
 | `handler.py` | Étape ③ : chargement du job, pipeline, publication | app principale |
-| `pipeline.py` | Pipeline de pseudonymisation, indépendant du format (`PipelineInput`) | ③, CLI |
+| `pipeline/` | Pipeline de pseudonymisation, indépendant du format (`PipelineInput`) ; code dans `runner.py`, API exposée par `pipeline/__init__.py` | ③, CLI |
 | `outputs.py` | Écriture des sorties et de la quarantaine, métadonnées, traces, nettoyages | ①②③ |
 | `statistics/` (`statistics.py`, `usage.py`) | Fiches de statistiques (Cosmos DB `statistiques`) et consommation de chaque traitement ; voir [statistiques](statistiques.md) | ①②③ |
 | `extraction.py`, `spans.py`, `redaction.py`, `detection/`, `pseudonymizer.py`, `classification.py`… | Cœur du traitement (PDF) | ③ |

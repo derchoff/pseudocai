@@ -1,0 +1,1797 @@
+{
+ "handwritten": {
+  "classification": {
+   "dossier": "non-classe",
+   "multi_type": false,
+   "principal": "NON_CLASSE",
+   "prompt_sha256": null,
+   "seuil": null,
+   "seuil_secondaire": null,
+   "statut": "non_applicable",
+   "types": []
+  },
+  "content_lines": null,
+  "occurrences": [],
+  "output_text": null,
+  "reasons": [
+   "manuscrit_detecte"
+  ],
+  "records": [],
+  "report": {
+   "classification": {
+    "dossier": "non-classe",
+    "multi_type": false,
+    "principal": "NON_CLASSE",
+    "prompt_sha256": null,
+    "seuil": null,
+    "seuil_secondaire": null,
+    "statut": "non_applicable",
+    "types": []
+   },
+   "consommation": {
+    "ia": {
+     "classification": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     },
+     "detection": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     },
+     "verification": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     }
+    },
+    "language": {
+     "caracteres": 0,
+     "enregistrements": 0
+    },
+    "pages_ia": 0,
+    "pages_ocr": 1
+   },
+   "diagnostic": {
+    "durees_s": {
+     "extraction": "<variable>"
+    },
+    "extraction": [
+     {
+      "confiance_ocr": 0.95,
+      "lignes": 6,
+      "mots": 24,
+      "mots_manuscrits": 2,
+      "page": 1,
+      "source": "ocr"
+     }
+    ]
+   },
+   "lignes": 6,
+   "lignes_texte_images": 0,
+   "motifs": [
+    "manuscrit_detecte"
+   ],
+   "mots_manuscrits": 2,
+   "pages": 1,
+   "pages_manuscrites": [
+    1
+   ],
+   "pages_natives": 0,
+   "pages_ocr": 1,
+   "pipeline_version": "0.2.0",
+   "politique_manuscrit": "quarantaine",
+   "statut": "quarantine"
+  },
+  "spans": [],
+  "status": "quarantine",
+  "text": null,
+  "token_text": null
+ },
+ "native_substitution": {
+  "classification": {
+   "dossier": "dentaire",
+   "multi_type": false,
+   "principal": "DENTAIRE",
+   "prompt_sha256": "sha-classif",
+   "seuil": 0.6,
+   "seuil_secondaire": 0.3,
+   "statut": "ok",
+   "types": [
+    {
+     "confidence": 0.9,
+     "indices": [
+      "indice dentaire"
+     ],
+     "type": "DENTAIRE"
+    },
+    {
+     "confidence": 0.4,
+     "indices": [
+      "indice optique"
+     ],
+     "type": "OPTIQUE"
+    }
+   ]
+  },
+  "content_lines": [
+   [
+    "p1-l1",
+    "Attestation",
+    "native"
+   ],
+   [
+    "p1-l2",
+    "Patient : M. DUPONT Jean",
+    "native"
+   ],
+   [
+    "p1-l3",
+    "Ne le 12/03/1985",
+    "native"
+   ],
+   [
+    "p1-l4",
+    "12 rue des Lilas 75011 PARIS",
+    "native"
+   ],
+   [
+    "p1-l5",
+    "Tel 06 12 34 56 78",
+    "native"
+   ],
+   [
+    "p1-l6",
+    "Signature : DUPONT",
+    "native"
+   ]
+  ],
+  "occurrences": [
+   {
+    "caracteres": [
+     13,
+     19
+    ],
+    "jeton": "NOM_774CC8C637",
+    "ligne": "p1-l2",
+    "page": 1,
+    "position": [
+     136.03,
+     83.1,
+     186.7,
+     99.59
+    ],
+    "quadrilateres": null,
+    "type": "NOM",
+    "valeur_fictive": "AUBERT"
+   },
+   {
+    "caracteres": [
+     20,
+     24
+    ],
+    "jeton": "PRENOM_752AD86DEB",
+    "ligne": "p1-l2",
+    "page": 1,
+    "position": [
+     190.03,
+     83.1,
+     216.05,
+     99.59
+    ],
+    "quadrilateres": null,
+    "type": "PRENOM",
+    "valeur_fictive": "Laurent"
+   },
+   {
+    "caracteres": [
+     6,
+     16
+    ],
+    "jeton": "DATE_NAISSANCE_EA4E4A65DB",
+    "ligne": "p1-l3",
+    "page": 1,
+    "position": [
+     103.34,
+     107.1,
+     163.39,
+     123.59
+    ],
+    "quadrilateres": null,
+    "type": "DATE_NAISSANCE",
+    "valeur_fictive": "08/11/2016"
+   },
+   {
+    "caracteres": [
+     11,
+     16
+    ],
+    "jeton": "ADRESSE_DF7E27E948",
+    "ligne": "p1-l4",
+    "page": 1,
+    "position": [
+     132.04,
+     131.1,
+     156.71,
+     147.59
+    ],
+    "quadrilateres": null,
+    "type": "ADRESSE",
+    "valeur_fictive": "Lyon"
+   },
+   {
+    "caracteres": [
+     4,
+     18
+    ],
+    "jeton": "TELEPHONE_F1E4A8C6C5",
+    "ligne": "p1-l5",
+    "page": 1,
+    "position": [
+     92.0,
+     155.1,
+     172.07,
+     171.59
+    ],
+    "quadrilateres": null,
+    "type": "TELEPHONE",
+    "valeur_fictive": "06 39 98 74 33"
+   },
+   {
+    "caracteres": [
+     12,
+     18
+    ],
+    "jeton": "NOM_774CC8C637",
+    "ligne": "p1-l6",
+    "page": 1,
+    "position": [
+     133.37,
+     179.1,
+     184.03,
+     195.59
+    ],
+    "quadrilateres": null,
+    "type": "NOM",
+    "valeur_fictive": "AUBERT"
+   }
+  ],
+  "output_text": "Attestation\nPatient : M.\nNe le\n12 rue des\n75011 PARIS\nTel\nSignature :\nAUBERT Laurent\n08/11/2016\nLyon\n06 39 98 74 33\nAUBERT\n",
+  "reasons": [],
+  "records": [
+   {
+    "fingerprint": "774cc8c637f804f373b8e44a2a1ba956c76720238d5fd082f36e7b3db9602764",
+    "id": "NOM_774CC8C637",
+    "type": "NOM"
+   },
+   {
+    "fingerprint": "752ad86deb356c11abb91697b85bf53248ed6b9a0614453b3907dd9deafd3cfa",
+    "id": "PRENOM_752AD86DEB",
+    "type": "PRENOM"
+   },
+   {
+    "fingerprint": "ea4e4a65db33bcc783363c8bda2c117930ac4a8b456a2891f1fa78544b1297fd",
+    "id": "DATE_NAISSANCE_EA4E4A65DB",
+    "type": "DATE_NAISSANCE"
+   },
+   {
+    "fingerprint": "df7e27e94860997e2f5b6088fe8ec040384eaa28433037320242c16a246f3faf",
+    "id": "ADRESSE_DF7E27E948",
+    "type": "ADRESSE"
+   },
+   {
+    "fingerprint": "f1e4a8c6c58ff1fd7cb50a027428de20195cbc137e3a57926b24042e35268c13",
+    "id": "TELEPHONE_F1E4A8C6C5",
+    "type": "TELEPHONE"
+   }
+  ],
+  "report": {
+   "classification": {
+    "dossier": "dentaire",
+    "multi_type": false,
+    "principal": "DENTAIRE",
+    "prompt_sha256": "sha-classif",
+    "seuil": 0.6,
+    "seuil_secondaire": 0.3,
+    "statut": "ok",
+    "types": [
+     {
+      "confidence": 0.9,
+      "indices": [
+       "indice dentaire"
+      ],
+      "type": "DENTAIRE"
+     },
+     {
+      "confidence": 0.4,
+      "indices": [
+       "indice optique"
+      ],
+      "type": "OPTIQUE"
+     }
+    ]
+   },
+   "consommation": {
+    "ia": {
+     "classification": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     },
+     "detection": {
+      "appels": 1,
+      "jetons_entree": 1200,
+      "jetons_raisonnement": 64,
+      "jetons_sortie": 150
+     },
+     "verification": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     }
+    },
+    "language": {
+     "caracteres": 120,
+     "enregistrements": 1
+    },
+    "pages_ia": 1,
+    "pages_ocr": 1
+   },
+   "duree_secondes": "<variable>",
+   "entites_par_source": {
+    "llm": 2,
+    "propagation": 1,
+    "regex": 2,
+    "verifier": 1
+   },
+   "entites_par_type": {
+    "ADRESSE": 1,
+    "DATE_NAISSANCE": 1,
+    "NOM": 2,
+    "PRENOM": 1,
+    "TELEPHONE": 1
+   },
+   "jetons_distincts": 5,
+   "lignes": 6,
+   "lignes_texte_images": 0,
+   "mode_sortie": "substitution",
+   "motifs": [],
+   "mots_manuscrits": 0,
+   "pages": 1,
+   "pages_natives": 1,
+   "pages_ocr": 0,
+   "pipeline_version": "0.2.0",
+   "politique_manuscrit": "quarantaine",
+   "prompt_detection_sha256": "fake",
+   "prompt_verification_sha256": "fake",
+   "statut": "ok",
+   "tours_verification": 2
+  },
+  "spans": [
+   {
+    "end": 19,
+    "line_id": "p1-l2",
+    "source": "llm",
+    "start": 13,
+    "surrogate": "AUBERT",
+    "token": "[NOM_774CC8C637]",
+    "type": "NOM",
+    "value": null
+   },
+   {
+    "end": 24,
+    "line_id": "p1-l2",
+    "source": "llm",
+    "start": 20,
+    "surrogate": "Laurent",
+    "token": "[PRENOM_752AD86DEB]",
+    "type": "PRENOM",
+    "value": null
+   },
+   {
+    "end": 16,
+    "line_id": "p1-l3",
+    "source": "regex",
+    "start": 6,
+    "surrogate": "08/11/2016",
+    "token": "[DATE_NAISSANCE_EA4E4A65DB]",
+    "type": "DATE_NAISSANCE",
+    "value": null
+   },
+   {
+    "end": 16,
+    "line_id": "p1-l4",
+    "source": "verifier",
+    "start": 11,
+    "surrogate": "Lyon",
+    "token": "[ADRESSE_DF7E27E948]",
+    "type": "ADRESSE",
+    "value": null
+   },
+   {
+    "end": 18,
+    "line_id": "p1-l5",
+    "source": "regex",
+    "start": 4,
+    "surrogate": "06 39 98 74 33",
+    "token": "[TELEPHONE_F1E4A8C6C5]",
+    "type": "TELEPHONE",
+    "value": null
+   },
+   {
+    "end": 18,
+    "line_id": "p1-l6",
+    "source": "propagation",
+    "start": 12,
+    "surrogate": "AUBERT",
+    "token": "[NOM_774CC8C637]",
+    "type": "NOM",
+    "value": null
+   }
+  ],
+  "status": "ok",
+  "text": "===== Page 1 =====\nAttestation\nPatient : M. AUBERT Laurent\nNe le 08/11/2016\n12 rue des Lyon 75011 PARIS\nTel 06 39 98 74 33\nSignature : AUBERT\n",
+  "token_text": "===== Page 1 =====\nAttestation\nPatient : M. [NOM_774CC8C637] [PRENOM_752AD86DEB]\nNe le [DATE_NAISSANCE_EA4E4A65DB]\n12 rue des [ADRESSE_DF7E27E948] 75011 PARIS\nTel [TELEPHONE_F1E4A8C6C5]\nSignature : [NOM_774CC8C637]\n"
+ },
+ "native_tokens": {
+  "classification": {
+   "dossier": "dentaire",
+   "multi_type": false,
+   "principal": "DENTAIRE",
+   "prompt_sha256": "sha-classif",
+   "seuil": 0.6,
+   "seuil_secondaire": 0.3,
+   "statut": "ok",
+   "types": [
+    {
+     "confidence": 0.9,
+     "indices": [
+      "indice dentaire"
+     ],
+     "type": "DENTAIRE"
+    },
+    {
+     "confidence": 0.4,
+     "indices": [
+      "indice optique"
+     ],
+     "type": "OPTIQUE"
+    }
+   ]
+  },
+  "content_lines": [
+   [
+    "p1-l1",
+    "Attestation",
+    "native"
+   ],
+   [
+    "p1-l2",
+    "Patient : M. DUPONT Jean",
+    "native"
+   ],
+   [
+    "p1-l3",
+    "Ne le 12/03/1985",
+    "native"
+   ],
+   [
+    "p1-l4",
+    "12 rue des Lilas 75011 PARIS",
+    "native"
+   ],
+   [
+    "p1-l5",
+    "Tel 06 12 34 56 78",
+    "native"
+   ],
+   [
+    "p1-l6",
+    "Signature : DUPONT",
+    "native"
+   ]
+  ],
+  "occurrences": [
+   {
+    "caracteres": [
+     13,
+     19
+    ],
+    "jeton": "NOM_774CC8C637",
+    "ligne": "p1-l2",
+    "page": 1,
+    "position": [
+     136.03,
+     83.1,
+     186.7,
+     99.59
+    ],
+    "quadrilateres": null,
+    "type": "NOM",
+    "valeur_fictive": null
+   },
+   {
+    "caracteres": [
+     20,
+     24
+    ],
+    "jeton": "PRENOM_752AD86DEB",
+    "ligne": "p1-l2",
+    "page": 1,
+    "position": [
+     190.03,
+     83.1,
+     216.05,
+     99.59
+    ],
+    "quadrilateres": null,
+    "type": "PRENOM",
+    "valeur_fictive": null
+   },
+   {
+    "caracteres": [
+     6,
+     16
+    ],
+    "jeton": "DATE_NAISSANCE_EA4E4A65DB",
+    "ligne": "p1-l3",
+    "page": 1,
+    "position": [
+     103.34,
+     107.1,
+     163.39,
+     123.59
+    ],
+    "quadrilateres": null,
+    "type": "DATE_NAISSANCE",
+    "valeur_fictive": null
+   },
+   {
+    "caracteres": [
+     11,
+     16
+    ],
+    "jeton": "ADRESSE_DF7E27E948",
+    "ligne": "p1-l4",
+    "page": 1,
+    "position": [
+     132.04,
+     131.1,
+     156.71,
+     147.59
+    ],
+    "quadrilateres": null,
+    "type": "ADRESSE",
+    "valeur_fictive": null
+   },
+   {
+    "caracteres": [
+     4,
+     18
+    ],
+    "jeton": "TELEPHONE_F1E4A8C6C5",
+    "ligne": "p1-l5",
+    "page": 1,
+    "position": [
+     92.0,
+     155.1,
+     172.07,
+     171.59
+    ],
+    "quadrilateres": null,
+    "type": "TELEPHONE",
+    "valeur_fictive": null
+   },
+   {
+    "caracteres": [
+     12,
+     18
+    ],
+    "jeton": "NOM_774CC8C637",
+    "ligne": "p1-l6",
+    "page": 1,
+    "position": [
+     133.37,
+     179.1,
+     184.03,
+     195.59
+    ],
+    "quadrilateres": null,
+    "type": "NOM",
+    "valeur_fictive": null
+   }
+  ],
+  "output_text": "Attestation\nPatient : M.\nNe le\n12 rue des\n75011 PARIS\nTel\nSignature :\n[NOM_774CC8C637]\n[PRENOM_752AD86DEB]\n[DATE_NAISSANCE_EA4E4A65DB]\n[ADRESSE_DF7E27E948]\n[TELEPHONE_F1E4A8C6C5]\n[NOM_774CC8C637]\n",
+  "reasons": [],
+  "records": [
+   {
+    "fingerprint": "774cc8c637f804f373b8e44a2a1ba956c76720238d5fd082f36e7b3db9602764",
+    "id": "NOM_774CC8C637",
+    "type": "NOM"
+   },
+   {
+    "fingerprint": "752ad86deb356c11abb91697b85bf53248ed6b9a0614453b3907dd9deafd3cfa",
+    "id": "PRENOM_752AD86DEB",
+    "type": "PRENOM"
+   },
+   {
+    "fingerprint": "ea4e4a65db33bcc783363c8bda2c117930ac4a8b456a2891f1fa78544b1297fd",
+    "id": "DATE_NAISSANCE_EA4E4A65DB",
+    "type": "DATE_NAISSANCE"
+   },
+   {
+    "fingerprint": "df7e27e94860997e2f5b6088fe8ec040384eaa28433037320242c16a246f3faf",
+    "id": "ADRESSE_DF7E27E948",
+    "type": "ADRESSE"
+   },
+   {
+    "fingerprint": "f1e4a8c6c58ff1fd7cb50a027428de20195cbc137e3a57926b24042e35268c13",
+    "id": "TELEPHONE_F1E4A8C6C5",
+    "type": "TELEPHONE"
+   }
+  ],
+  "report": {
+   "classification": {
+    "dossier": "dentaire",
+    "multi_type": false,
+    "principal": "DENTAIRE",
+    "prompt_sha256": "sha-classif",
+    "seuil": 0.6,
+    "seuil_secondaire": 0.3,
+    "statut": "ok",
+    "types": [
+     {
+      "confidence": 0.9,
+      "indices": [
+       "indice dentaire"
+      ],
+      "type": "DENTAIRE"
+     },
+     {
+      "confidence": 0.4,
+      "indices": [
+       "indice optique"
+      ],
+      "type": "OPTIQUE"
+     }
+    ]
+   },
+   "consommation": {
+    "ia": {
+     "classification": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     },
+     "detection": {
+      "appels": 1,
+      "jetons_entree": 1200,
+      "jetons_raisonnement": 64,
+      "jetons_sortie": 150
+     },
+     "verification": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     }
+    },
+    "language": {
+     "caracteres": 120,
+     "enregistrements": 1
+    },
+    "pages_ia": 1,
+    "pages_ocr": 1
+   },
+   "diagnostic": {
+    "detection": {
+     "language": 0,
+     "llm": {
+      "appels": 1,
+      "entites_rendues": 3,
+      "entites_retenues": 2,
+      "jetons_entree": 1200,
+      "jetons_raisonnement": 64,
+      "jetons_sortie": 150
+     },
+     "propagation": 5,
+     "regex": 2,
+     "zones_avant_fusion": 4,
+     "zones_retenues": 5,
+     "zones_retirees_exceptions": 0
+    },
+    "durees_s": {
+     "classification": "<variable>",
+     "detection": "<variable>",
+     "detection_language": "<variable>",
+     "detection_llm": "<variable>",
+     "extraction": "<variable>",
+     "rendu": "<variable>",
+     "verification": "<variable>"
+    },
+    "extraction": [
+     {
+      "lignes": 6,
+      "lignes_texte_images": 0,
+      "mots": 24,
+      "page": 1,
+      "source": "native"
+     }
+    ],
+    "localisation": {
+     "echecs": [],
+     "methodes": {
+      "exacte": 2
+     }
+    },
+    "verification": [
+     {
+      "a_trouve_du_nouveau": true,
+      "agent": {
+       "duree_s": "<variable>",
+       "entites_retenues": 1
+      },
+      "lignes_completees": [
+       "p1-l4"
+      ],
+      "localisation": {
+       "echecs": [],
+       "methodes": {
+        "exacte": 1
+       }
+      },
+      "nouveaux_caracteres_masques": 5,
+      "nouvelles_zones_par_type": {
+       "ADRESSE": 1
+      },
+      "residus": [
+       {
+        "ligne": "p1-l4",
+        "type": "ADRESSE"
+       }
+      ],
+      "residus_par_type": {
+       "ADRESSE": 1
+      },
+      "residus_signales": 1,
+      "tour": 1
+     },
+     {
+      "a_trouve_du_nouveau": false,
+      "agent": {
+       "duree_s": "<variable>",
+       "entites_retenues": 0
+      },
+      "lignes_completees": [],
+      "localisation": {
+       "echecs": [],
+       "methodes": {}
+      },
+      "nouveaux_caracteres_masques": 0,
+      "nouvelles_zones_par_type": {},
+      "residus": [],
+      "residus_par_type": {},
+      "residus_signales": 0,
+      "tour": 2
+     }
+    ]
+   },
+   "duree_secondes": "<variable>",
+   "entites_par_source": {
+    "llm": 2,
+    "propagation": 1,
+    "regex": 2,
+    "verifier": 1
+   },
+   "entites_par_type": {
+    "ADRESSE": 1,
+    "DATE_NAISSANCE": 1,
+    "NOM": 2,
+    "PRENOM": 1,
+    "TELEPHONE": 1
+   },
+   "jetons_distincts": 5,
+   "lignes": 6,
+   "lignes_texte_images": 0,
+   "mode_sortie": "jetons",
+   "motifs": [],
+   "mots_manuscrits": 0,
+   "pages": 1,
+   "pages_natives": 1,
+   "pages_ocr": 0,
+   "pipeline_version": "0.2.0",
+   "politique_manuscrit": "quarantaine",
+   "prompt_detection_sha256": "fake",
+   "prompt_verification_sha256": "fake",
+   "statut": "ok",
+   "tours_verification": 2
+  },
+  "spans": [
+   {
+    "end": 19,
+    "line_id": "p1-l2",
+    "source": "llm",
+    "start": 13,
+    "surrogate": null,
+    "token": "[NOM_774CC8C637]",
+    "type": "NOM",
+    "value": null
+   },
+   {
+    "end": 24,
+    "line_id": "p1-l2",
+    "source": "llm",
+    "start": 20,
+    "surrogate": null,
+    "token": "[PRENOM_752AD86DEB]",
+    "type": "PRENOM",
+    "value": null
+   },
+   {
+    "end": 16,
+    "line_id": "p1-l3",
+    "source": "regex",
+    "start": 6,
+    "surrogate": null,
+    "token": "[DATE_NAISSANCE_EA4E4A65DB]",
+    "type": "DATE_NAISSANCE",
+    "value": null
+   },
+   {
+    "end": 16,
+    "line_id": "p1-l4",
+    "source": "verifier",
+    "start": 11,
+    "surrogate": null,
+    "token": "[ADRESSE_DF7E27E948]",
+    "type": "ADRESSE",
+    "value": null
+   },
+   {
+    "end": 18,
+    "line_id": "p1-l5",
+    "source": "regex",
+    "start": 4,
+    "surrogate": null,
+    "token": "[TELEPHONE_F1E4A8C6C5]",
+    "type": "TELEPHONE",
+    "value": null
+   },
+   {
+    "end": 18,
+    "line_id": "p1-l6",
+    "source": "propagation",
+    "start": 12,
+    "surrogate": null,
+    "token": "[NOM_774CC8C637]",
+    "type": "NOM",
+    "value": null
+   }
+  ],
+  "status": "ok",
+  "text": "===== Page 1 =====\nAttestation\nPatient : M. [NOM_774CC8C637] [PRENOM_752AD86DEB]\nNe le [DATE_NAISSANCE_EA4E4A65DB]\n12 rue des [ADRESSE_DF7E27E948] 75011 PARIS\nTel [TELEPHONE_F1E4A8C6C5]\nSignature : [NOM_774CC8C637]\n",
+  "token_text": "===== Page 1 =====\nAttestation\nPatient : M. [NOM_774CC8C637] [PRENOM_752AD86DEB]\nNe le [DATE_NAISSANCE_EA4E4A65DB]\n12 rue des [ADRESSE_DF7E27E948] 75011 PARIS\nTel [TELEPHONE_F1E4A8C6C5]\nSignature : [NOM_774CC8C637]\n"
+ },
+ "scanned": {
+  "classification": {
+   "dossier": "",
+   "multi_type": false,
+   "principal": "NON_CLASSE",
+   "prompt_sha256": null,
+   "seuil": null,
+   "seuil_secondaire": null,
+   "statut": "desactivee",
+   "types": []
+  },
+  "content_lines": [
+   [
+    "p1-l1",
+    "Attestation",
+    "ocr"
+   ],
+   [
+    "p1-l2",
+    "Patient : M. DUPONT Jean",
+    "ocr"
+   ],
+   [
+    "p1-l3",
+    "Ne le 12/03/1985",
+    "ocr"
+   ],
+   [
+    "p1-l4",
+    "12 rue des Lilas 75011 PARIS",
+    "ocr"
+   ],
+   [
+    "p1-l5",
+    "Tel 06 12 34 56 78",
+    "ocr"
+   ],
+   [
+    "p1-l6",
+    "Signature : DUPONT",
+    "ocr"
+   ]
+  ],
+  "occurrences": [
+   {
+    "caracteres": [
+     13,
+     19
+    ],
+    "jeton": "NOM_774CC8C637",
+    "ligne": "p1-l2",
+    "page": 1,
+    "position": [
+     136.03,
+     83.1,
+     186.7,
+     99.59
+    ],
+    "quadrilateres": null,
+    "type": "NOM",
+    "valeur_fictive": null
+   },
+   {
+    "caracteres": [
+     20,
+     24
+    ],
+    "jeton": "PRENOM_752AD86DEB",
+    "ligne": "p1-l2",
+    "page": 1,
+    "position": [
+     190.03,
+     83.1,
+     216.05,
+     99.59
+    ],
+    "quadrilateres": null,
+    "type": "PRENOM",
+    "valeur_fictive": null
+   },
+   {
+    "caracteres": [
+     6,
+     16
+    ],
+    "jeton": "DATE_NAISSANCE_EA4E4A65DB",
+    "ligne": "p1-l3",
+    "page": 1,
+    "position": [
+     103.34,
+     107.1,
+     163.39,
+     123.59
+    ],
+    "quadrilateres": null,
+    "type": "DATE_NAISSANCE",
+    "valeur_fictive": null
+   },
+   {
+    "caracteres": [
+     4,
+     18
+    ],
+    "jeton": "TELEPHONE_F1E4A8C6C5",
+    "ligne": "p1-l5",
+    "page": 1,
+    "position": [
+     92.0,
+     155.1,
+     172.07,
+     171.59
+    ],
+    "quadrilateres": null,
+    "type": "TELEPHONE",
+    "valeur_fictive": null
+   },
+   {
+    "caracteres": [
+     12,
+     18
+    ],
+    "jeton": "NOM_774CC8C637",
+    "ligne": "p1-l6",
+    "page": 1,
+    "position": [
+     133.37,
+     179.1,
+     184.03,
+     195.59
+    ],
+    "quadrilateres": null,
+    "type": "NOM",
+    "valeur_fictive": null
+   }
+  ],
+  "output_text": "",
+  "reasons": [],
+  "records": [
+   {
+    "fingerprint": "774cc8c637f804f373b8e44a2a1ba956c76720238d5fd082f36e7b3db9602764",
+    "id": "NOM_774CC8C637",
+    "type": "NOM"
+   },
+   {
+    "fingerprint": "752ad86deb356c11abb91697b85bf53248ed6b9a0614453b3907dd9deafd3cfa",
+    "id": "PRENOM_752AD86DEB",
+    "type": "PRENOM"
+   },
+   {
+    "fingerprint": "ea4e4a65db33bcc783363c8bda2c117930ac4a8b456a2891f1fa78544b1297fd",
+    "id": "DATE_NAISSANCE_EA4E4A65DB",
+    "type": "DATE_NAISSANCE"
+   },
+   {
+    "fingerprint": "f1e4a8c6c58ff1fd7cb50a027428de20195cbc137e3a57926b24042e35268c13",
+    "id": "TELEPHONE_F1E4A8C6C5",
+    "type": "TELEPHONE"
+   }
+  ],
+  "report": {
+   "classification": {
+    "dossier": "",
+    "multi_type": false,
+    "principal": "NON_CLASSE",
+    "prompt_sha256": null,
+    "seuil": null,
+    "seuil_secondaire": null,
+    "statut": "desactivee",
+    "types": []
+   },
+   "consommation": {
+    "ia": {
+     "classification": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     },
+     "detection": {
+      "appels": 1,
+      "jetons_entree": 1200,
+      "jetons_raisonnement": 64,
+      "jetons_sortie": 150
+     },
+     "verification": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     }
+    },
+    "language": {
+     "caracteres": 0,
+     "enregistrements": 0
+    },
+    "pages_ia": 1,
+    "pages_ocr": 1
+   },
+   "diagnostic": {
+    "detection": {
+     "language": null,
+     "llm": {
+      "appels": 1,
+      "entites_rendues": 3,
+      "entites_retenues": 2,
+      "jetons_entree": 1200,
+      "jetons_raisonnement": 64,
+      "jetons_sortie": 150
+     },
+     "propagation": 5,
+     "regex": 2,
+     "zones_avant_fusion": 4,
+     "zones_retenues": 5,
+     "zones_retirees_exceptions": 0
+    },
+    "durees_s": {
+     "classification": "<variable>",
+     "detection": "<variable>",
+     "detection_llm": "<variable>",
+     "extraction": "<variable>",
+     "rendu": "<variable>"
+    },
+    "extraction": [
+     {
+      "confiance_ocr": 0.95,
+      "lignes": 6,
+      "mots": 24,
+      "page": 1,
+      "source": "ocr"
+     }
+    ],
+    "localisation": {
+     "echecs": [],
+     "methodes": {
+      "exacte": 2
+     }
+    }
+   },
+   "duree_secondes": "<variable>",
+   "entites_par_source": {
+    "llm": 2,
+    "propagation": 1,
+    "regex": 2
+   },
+   "entites_par_type": {
+    "DATE_NAISSANCE": 1,
+    "NOM": 2,
+    "PRENOM": 1,
+    "TELEPHONE": 1
+   },
+   "jetons_distincts": 4,
+   "lignes": 6,
+   "lignes_texte_images": 0,
+   "mode_sortie": "jetons",
+   "motifs": [],
+   "mots_manuscrits": 0,
+   "pages": 1,
+   "pages_natives": 0,
+   "pages_ocr": 1,
+   "pipeline_version": "0.2.0",
+   "politique_manuscrit": "quarantaine",
+   "prompt_detection_sha256": "fake",
+   "statut": "ok",
+   "tours_verification": 0
+  },
+  "spans": [
+   {
+    "end": 19,
+    "line_id": "p1-l2",
+    "source": "llm",
+    "start": 13,
+    "surrogate": null,
+    "token": "[NOM_774CC8C637]",
+    "type": "NOM",
+    "value": null
+   },
+   {
+    "end": 24,
+    "line_id": "p1-l2",
+    "source": "llm",
+    "start": 20,
+    "surrogate": null,
+    "token": "[PRENOM_752AD86DEB]",
+    "type": "PRENOM",
+    "value": null
+   },
+   {
+    "end": 16,
+    "line_id": "p1-l3",
+    "source": "regex",
+    "start": 6,
+    "surrogate": null,
+    "token": "[DATE_NAISSANCE_EA4E4A65DB]",
+    "type": "DATE_NAISSANCE",
+    "value": null
+   },
+   {
+    "end": 18,
+    "line_id": "p1-l5",
+    "source": "regex",
+    "start": 4,
+    "surrogate": null,
+    "token": "[TELEPHONE_F1E4A8C6C5]",
+    "type": "TELEPHONE",
+    "value": null
+   },
+   {
+    "end": 18,
+    "line_id": "p1-l6",
+    "source": "propagation",
+    "start": 12,
+    "surrogate": null,
+    "token": "[NOM_774CC8C637]",
+    "type": "NOM",
+    "value": null
+   }
+  ],
+  "status": "ok",
+  "text": "===== Page 1 =====\nAttestation\nPatient : M. [NOM_774CC8C637] [PRENOM_752AD86DEB]\nNe le [DATE_NAISSANCE_EA4E4A65DB]\n12 rue des Lilas 75011 PARIS\nTel [TELEPHONE_F1E4A8C6C5]\nSignature : [NOM_774CC8C637]\n",
+  "token_text": "===== Page 1 =====\nAttestation\nPatient : M. [NOM_774CC8C637] [PRENOM_752AD86DEB]\nNe le [DATE_NAISSANCE_EA4E4A65DB]\n12 rue des Lilas 75011 PARIS\nTel [TELEPHONE_F1E4A8C6C5]\nSignature : [NOM_774CC8C637]\n"
+ },
+ "text_content": {
+  "classification": {
+   "dossier": "non-classe",
+   "multi_type": false,
+   "principal": "NON_CLASSE",
+   "prompt_sha256": null,
+   "seuil": null,
+   "seuil_secondaire": null,
+   "statut": "non_applicable",
+   "types": []
+  },
+  "content_lines": [
+   [
+    "p1-l1",
+    "DOCUMENT.id : 00000000-0000-0000-0000-000000000001",
+    "native"
+   ],
+   [
+    "p1-l2",
+    "DOCUMENT.label : Acte de deces + Correspondance - 9000001 - 9000002.eml",
+    "native"
+   ],
+   [
+    "p1-l3",
+    "DOCUMENT.date_qualification : 2026-02-18 00:00:00.000",
+    "native"
+   ],
+   [
+    "p1-l4",
+    "DOCUMENT.nature : Modification",
+    "native"
+   ],
+   [
+    "p1-l5",
+    "DOCUMENT.famille : Administratif",
+    "native"
+   ],
+   [
+    "p1-l6",
+    "GED_metadata.id : 00000000-0000-0000-0000-000000000001",
+    "native"
+   ],
+   [
+    "p1-l7",
+    "GED_metadata.label : Acte de deces + Correspondance - 9000001 - 9000002.eml",
+    "native"
+   ],
+   [
+    "p1-l8",
+    "GED_metadata.description : <<= Décès salarié - DUPONT Jean (1000000000001) - Statut GED : Traité 27 février 2026",
+    "native"
+   ],
+   [
+    "p1-l9",
+    "GED_metadata.mimetype : message/rfc822",
+    "native"
+   ],
+   [
+    "p1-l10",
+    "GED_metadata.creator : Administrateur QUALIFICATION",
+    "native"
+   ],
+   [
+    "p1-l11",
+    "GED_metadata.modifier : Claire MARTIN",
+    "native"
+   ],
+   [
+    "p1-l12",
+    "GED_metadata.ancestors[0].id : a1",
+    "native"
+   ],
+   [
+    "p1-l13",
+    "GED_metadata.ancestors[0].label : Année 2026",
+    "native"
+   ],
+   [
+    "p1-l14",
+    "GED_metadata.ancestors[0].type : periode",
+    "native"
+   ],
+   [
+    "p1-l15",
+    "GED_metadata.ancestors[1].id : a3",
+    "native"
+   ],
+   [
+    "p1-l16",
+    "GED_metadata.ancestors[1].label : Client (11124714)",
+    "native"
+   ],
+   [
+    "p1-l17",
+    "GED_metadata.ancestors[1].type : client",
+    "native"
+   ],
+   [
+    "p1-l18",
+    "GED_metadata.ancestors[2].id : a4",
+    "native"
+   ],
+   [
+    "p1-l19",
+    "GED_metadata.ancestors[2].label : Assuré DUPONT Jean",
+    "native"
+   ],
+   [
+    "p1-l20",
+    "GED_metadata.ancestors[2].type : assure",
+    "native"
+   ],
+   [
+    "p1-l21",
+    "GED_metadata.metadatas.Emetteur du mail : Paul LEROY <paul.leroy@example.com>",
+    "native"
+   ],
+   [
+    "p1-l22",
+    "GED_metadata.metadatas.Statut : traité",
+    "native"
+   ],
+   [
+    "p1-l23",
+    "GED_metadata.metadatas.Nature[0] : Acte de décès",
+    "native"
+   ],
+   [
+    "p1-l24",
+    "GED_metadata.metadatas.Nature[1] : Correspondance",
+    "native"
+   ],
+   [
+    "p1-l25",
+    "GED_metadata.metadatas.Gestionnaire dédié PRESTA : Gestion Prestations Individuelles",
+    "native"
+   ],
+   [
+    "p1-l26",
+    "GED_metadata.metadatas.Gestionnaire dédié BDD : Gestion Administrative Individuelle",
+    "native"
+   ],
+   [
+    "p1-l27",
+    "GED_metadata.metadatas.Gestionnaire dédié Qualité : Julie BERNARD",
+    "native"
+   ],
+   [
+    "p1-l28",
+    "GED_metadata.metadatas.Souscripteur : EXEMPLE INDUSTRIES (9968108)",
+    "native"
+   ],
+   [
+    "p1-l29",
+    "GED_metadata.metadatas.Num interne contrat : 10394068",
+    "native"
+   ],
+   [
+    "p1-l30",
+    "GED_metadata.metadatas.Emetteur, Destinataire : Assuré",
+    "native"
+   ],
+   [
+    "p1-l31",
+    "GED_metadata.metadatas.Qualificateur : QUALIF_8",
+    "native"
+   ]
+  ],
+  "occurrences": [
+   {
+    "caracteres": [
+     47,
+     53
+    ],
+    "jeton": "NOM_774CC8C637",
+    "ligne": "p1-l8",
+    "page": 1,
+    "position": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "quadrilateres": null,
+    "type": "NOM",
+    "valeur_fictive": "AUBERT"
+   },
+   {
+    "caracteres": [
+     54,
+     58
+    ],
+    "jeton": "PRENOM_752AD86DEB",
+    "ligne": "p1-l8",
+    "page": 1,
+    "position": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "quadrilateres": null,
+    "type": "PRENOM",
+    "valeur_fictive": "Élise"
+   },
+   {
+    "caracteres": [
+     24,
+     30
+    ],
+    "jeton": "PRENOM_5B7FEBE7F0",
+    "ligne": "p1-l11",
+    "page": 1,
+    "position": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "quadrilateres": null,
+    "type": "PRENOM",
+    "valeur_fictive": "Océane"
+   },
+   {
+    "caracteres": [
+     31,
+     37
+    ],
+    "jeton": "NOM_339407B558",
+    "ligne": "p1-l11",
+    "page": 1,
+    "position": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "quadrilateres": null,
+    "type": "NOM",
+    "valeur_fictive": "BERTRAND"
+   },
+   {
+    "caracteres": [
+     41,
+     47
+    ],
+    "jeton": "NOM_774CC8C637",
+    "ligne": "p1-l19",
+    "page": 1,
+    "position": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "quadrilateres": null,
+    "type": "NOM",
+    "valeur_fictive": "AUBERT"
+   },
+   {
+    "caracteres": [
+     48,
+     52
+    ],
+    "jeton": "PRENOM_752AD86DEB",
+    "ligne": "p1-l19",
+    "page": 1,
+    "position": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "quadrilateres": null,
+    "type": "PRENOM",
+    "valeur_fictive": "Élise"
+   },
+   {
+    "caracteres": [
+     54,
+     76
+    ],
+    "jeton": "EMAIL_A43BD8C595",
+    "ligne": "p1-l21",
+    "page": 1,
+    "position": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "quadrilateres": null,
+    "type": "EMAIL",
+    "valeur_fictive": "veronique.morin@example.com"
+   }
+  ],
+  "output_text": null,
+  "reasons": [],
+  "records": [
+   {
+    "fingerprint": "774cc8c637f804f373b8e44a2a1ba956c76720238d5fd082f36e7b3db9602764",
+    "id": "NOM_774CC8C637",
+    "type": "NOM"
+   },
+   {
+    "fingerprint": "752ad86deb356c11abb91697b85bf53248ed6b9a0614453b3907dd9deafd3cfa",
+    "id": "PRENOM_752AD86DEB",
+    "type": "PRENOM"
+   },
+   {
+    "fingerprint": "5b7febe7f0318acd710679cc139de4acc26cd12f567c6388417074daea7ab865",
+    "id": "PRENOM_5B7FEBE7F0",
+    "type": "PRENOM"
+   },
+   {
+    "fingerprint": "339407b5585719c8c0b69b78a9486af7e893b47e9bb786e3276a06e9a2e8102e",
+    "id": "NOM_339407B558",
+    "type": "NOM"
+   },
+   {
+    "fingerprint": "a43bd8c595f489f0be06f35ac7b3c553b5b5cc587ad2cdfc161fa9c108ad4c9f",
+    "id": "EMAIL_A43BD8C595",
+    "type": "EMAIL"
+   }
+  ],
+  "report": {
+   "classification": {
+    "dossier": "non-classe",
+    "multi_type": false,
+    "principal": "NON_CLASSE",
+    "prompt_sha256": null,
+    "seuil": null,
+    "seuil_secondaire": null,
+    "statut": "non_applicable",
+    "types": []
+   },
+   "consommation": {
+    "ia": {
+     "classification": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     },
+     "detection": {
+      "appels": 1,
+      "jetons_entree": 1200,
+      "jetons_raisonnement": 64,
+      "jetons_sortie": 150
+     },
+     "verification": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     }
+    },
+    "language": {
+     "caracteres": 120,
+     "enregistrements": 1
+    },
+    "pages_ia": 0,
+    "pages_ocr": 0
+   },
+   "diagnostic": {
+    "detection": {
+     "language": 0,
+     "llm": {
+      "appels": 1,
+      "entites_rendues": 3,
+      "entites_retenues": 6,
+      "jetons_entree": 1200,
+      "jetons_raisonnement": 64,
+      "jetons_sortie": 150
+     },
+     "propagation": 7,
+     "regex": 1,
+     "zones_avant_fusion": 7,
+     "zones_retenues": 7,
+     "zones_retirees_exceptions": 0
+    },
+    "durees_s": {
+     "detection": "<variable>",
+     "detection_language": "<variable>",
+     "detection_llm": "<variable>",
+     "verification": "<variable>"
+    },
+    "extraction": [
+     {
+      "lignes": 31,
+      "lignes_texte_images": 0,
+      "mots": 152,
+      "page": 1,
+      "source": "native"
+     }
+    ],
+    "localisation": {
+     "echecs": [],
+     "methodes": {
+      "exacte": 6
+     }
+    },
+    "verification": [
+     {
+      "a_trouve_du_nouveau": false,
+      "agent": {
+       "duree_s": "<variable>",
+       "entites_retenues": 0
+      },
+      "lignes_completees": [],
+      "localisation": {
+       "echecs": [],
+       "methodes": {}
+      },
+      "nouveaux_caracteres_masques": 0,
+      "nouvelles_zones_par_type": {},
+      "residus": [],
+      "residus_par_type": {},
+      "residus_signales": 0,
+      "tour": 1
+     }
+    ]
+   },
+   "duree_secondes": "<variable>",
+   "entites_par_source": {
+    "llm": 6,
+    "regex": 1
+   },
+   "entites_par_type": {
+    "EMAIL": 1,
+    "NOM": 3,
+    "PRENOM": 3
+   },
+   "jetons_distincts": 5,
+   "lignes": 31,
+   "mode_sortie": "substitution",
+   "motifs": [],
+   "pipeline_version": "0.2.0",
+   "prompt_detection_sha256": "fake",
+   "prompt_verification_sha256": "fake",
+   "source": {
+    "format": "json",
+    "origine": "json-metadata"
+   },
+   "statut": "ok",
+   "tours_verification": 1
+  },
+  "spans": [
+   {
+    "end": 53,
+    "line_id": "p1-l8",
+    "source": "llm",
+    "start": 47,
+    "surrogate": "AUBERT",
+    "token": "[NOM_774CC8C637]",
+    "type": "NOM",
+    "value": null
+   },
+   {
+    "end": 58,
+    "line_id": "p1-l8",
+    "source": "llm",
+    "start": 54,
+    "surrogate": "Élise",
+    "token": "[PRENOM_752AD86DEB]",
+    "type": "PRENOM",
+    "value": null
+   },
+   {
+    "end": 30,
+    "line_id": "p1-l11",
+    "source": "llm",
+    "start": 24,
+    "surrogate": "Océane",
+    "token": "[PRENOM_5B7FEBE7F0]",
+    "type": "PRENOM",
+    "value": null
+   },
+   {
+    "end": 37,
+    "line_id": "p1-l11",
+    "source": "llm",
+    "start": 31,
+    "surrogate": "BERTRAND",
+    "token": "[NOM_339407B558]",
+    "type": "NOM",
+    "value": null
+   },
+   {
+    "end": 47,
+    "line_id": "p1-l19",
+    "source": "llm",
+    "start": 41,
+    "surrogate": "AUBERT",
+    "token": "[NOM_774CC8C637]",
+    "type": "NOM",
+    "value": null
+   },
+   {
+    "end": 52,
+    "line_id": "p1-l19",
+    "source": "llm",
+    "start": 48,
+    "surrogate": "Élise",
+    "token": "[PRENOM_752AD86DEB]",
+    "type": "PRENOM",
+    "value": null
+   },
+   {
+    "end": 76,
+    "line_id": "p1-l21",
+    "source": "regex",
+    "start": 54,
+    "surrogate": "veronique.morin@example.com",
+    "token": "[EMAIL_A43BD8C595]",
+    "type": "EMAIL",
+    "value": null
+   }
+  ],
+  "status": "ok",
+  "text": "===== Page 1 =====\nDOCUMENT.id : 00000000-0000-0000-0000-000000000001\nDOCUMENT.label : Acte de deces + Correspondance - 9000001 - 9000002.eml\nDOCUMENT.date_qualification : 2026-02-18 00:00:00.000\nDOCUMENT.nature : Modification\nDOCUMENT.famille : Administratif\nGED_metadata.id : 00000000-0000-0000-0000-000000000001\nGED_metadata.label : Acte de deces + Correspondance - 9000001 - 9000002.eml\nGED_metadata.description : <<= Décès salarié - AUBERT Élise (1000000000001) - Statut GED : Traité 27 février 2026\nGED_metadata.mimetype : message/rfc822\nGED_metadata.creator : Administrateur QUALIFICATION\nGED_metadata.modifier : Océane BERTRAND\nGED_metadata.ancestors[0].id : a1\nGED_metadata.ancestors[0].label : Année 2026\nGED_metadata.ancestors[0].type : periode\nGED_metadata.ancestors[1].id : a3\nGED_metadata.ancestors[1].label : Client (11124714)\nGED_metadata.ancestors[1].type : client\nGED_metadata.ancestors[2].id : a4\nGED_metadata.ancestors[2].label : Assuré AUBERT Élise\nGED_metadata.ancestors[2].type : assure\nGED_metadata.metadatas.Emetteur du mail : Paul LEROY <veronique.morin@example.com>\nGED_metadata.metadatas.Statut : traité\nGED_metadata.metadatas.Nature[0] : Acte de décès\nGED_metadata.metadatas.Nature[1] : Correspondance\nGED_metadata.metadatas.Gestionnaire dédié PRESTA : Gestion Prestations Individuelles\nGED_metadata.metadatas.Gestionnaire dédié BDD : Gestion Administrative Individuelle\nGED_metadata.metadatas.Gestionnaire dédié Qualité : Julie BERNARD\nGED_metadata.metadatas.Souscripteur : EXEMPLE INDUSTRIES (9968108)\nGED_metadata.metadatas.Num interne contrat : 10394068\nGED_metadata.metadatas.Emetteur, Destinataire : Assuré\nGED_metadata.metadatas.Qualificateur : QUALIF_8\n",
+  "token_text": "===== Page 1 =====\nDOCUMENT.id : 00000000-0000-0000-0000-000000000001\nDOCUMENT.label : Acte de deces + Correspondance - 9000001 - 9000002.eml\nDOCUMENT.date_qualification : 2026-02-18 00:00:00.000\nDOCUMENT.nature : Modification\nDOCUMENT.famille : Administratif\nGED_metadata.id : 00000000-0000-0000-0000-000000000001\nGED_metadata.label : Acte de deces + Correspondance - 9000001 - 9000002.eml\nGED_metadata.description : <<= Décès salarié - [NOM_774CC8C637] [PRENOM_752AD86DEB] (1000000000001) - Statut GED : Traité 27 février 2026\nGED_metadata.mimetype : message/rfc822\nGED_metadata.creator : Administrateur QUALIFICATION\nGED_metadata.modifier : [PRENOM_5B7FEBE7F0] [NOM_339407B558]\nGED_metadata.ancestors[0].id : a1\nGED_metadata.ancestors[0].label : Année 2026\nGED_metadata.ancestors[0].type : periode\nGED_metadata.ancestors[1].id : a3\nGED_metadata.ancestors[1].label : Client (11124714)\nGED_metadata.ancestors[1].type : client\nGED_metadata.ancestors[2].id : a4\nGED_metadata.ancestors[2].label : Assuré [NOM_774CC8C637] [PRENOM_752AD86DEB]\nGED_metadata.ancestors[2].type : assure\nGED_metadata.metadatas.Emetteur du mail : Paul LEROY <[EMAIL_A43BD8C595]>\nGED_metadata.metadatas.Statut : traité\nGED_metadata.metadatas.Nature[0] : Acte de décès\nGED_metadata.metadatas.Nature[1] : Correspondance\nGED_metadata.metadatas.Gestionnaire dédié PRESTA : Gestion Prestations Individuelles\nGED_metadata.metadatas.Gestionnaire dédié BDD : Gestion Administrative Individuelle\nGED_metadata.metadatas.Gestionnaire dédié Qualité : Julie BERNARD\nGED_metadata.metadatas.Souscripteur : EXEMPLE INDUSTRIES (9968108)\nGED_metadata.metadatas.Num interne contrat : 10394068\nGED_metadata.metadatas.Emetteur, Destinataire : Assuré\nGED_metadata.metadatas.Qualificateur : QUALIF_8\n"
+ },
+ "unreadable": {
+  "classification": {
+   "dossier": "non-classe",
+   "multi_type": false,
+   "principal": "NON_CLASSE",
+   "prompt_sha256": null,
+   "seuil": null,
+   "seuil_secondaire": null,
+   "statut": "non_applicable",
+   "types": []
+  },
+  "content_lines": null,
+  "occurrences": [],
+  "output_text": null,
+  "reasons": [
+   "pdf_illisible"
+  ],
+  "records": [],
+  "report": {
+   "classification": {
+    "dossier": "non-classe",
+    "multi_type": false,
+    "principal": "NON_CLASSE",
+    "prompt_sha256": null,
+    "seuil": null,
+    "seuil_secondaire": null,
+    "statut": "non_applicable",
+    "types": []
+   },
+   "consommation": {
+    "ia": {
+     "classification": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     },
+     "detection": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     },
+     "verification": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     }
+    },
+    "language": {
+     "caracteres": 0,
+     "enregistrements": 0
+    },
+    "pages_ia": 0,
+    "pages_ocr": 0
+   },
+   "diagnostic": {
+    "durees_s": {}
+   },
+   "motifs": [
+    "pdf_illisible"
+   ],
+   "pipeline_version": "0.2.0",
+   "statut": "quarantine"
+  },
+  "spans": [],
+  "status": "quarantine",
+  "text": null,
+  "token_text": null
+ }
+}

@@ -12,8 +12,8 @@ from typing import Callable, Protocol
 
 import pymupdf
 
-from .catalog import CatalogError
-from .classification import (
+from ..catalog import CatalogError
+from ..classification import (
     STATUT_DESACTIVEE,
     STATUT_ERREUR,
     STATUT_NON_APPLICABLE,
@@ -21,17 +21,17 @@ from .classification import (
     decide,
     unclassified,
 )
-from .config import Settings
-from .doctypes import DocTypeCatalog
-from .detection.regex_rules import detect_regex
-from .exceptions import apply_exceptions
-from .extraction import OcrEngine, extract_document
-from .fields import BUILTIN_STRATEGIES, BUILTIN_SUBSTITUTIONS, DEFAULT_STRATEGY, DEFAULT_SUBSTITUTION, FieldCatalog
-from .models import DocumentContent, Entity, Line, PageContent, Span
-from .pseudonymizer import MappingRecord, Pseudonymizer, ValueCipher, normalize
-from .redaction import normalize_rotation, render_pdf
-from .surrogates import SurrogateFactory
-from .spans import (
+from ..config import Settings
+from ..doctypes import DocTypeCatalog
+from ..detection.regex_rules import detect_regex
+from ..exceptions import apply_exceptions
+from ..extraction import OcrEngine, extract_document
+from ..fields import BUILTIN_STRATEGIES, BUILTIN_SUBSTITUTIONS, DEFAULT_STRATEGY, DEFAULT_SUBSTITUTION, FieldCatalog
+from ..models import DocumentContent, Entity, Line, PageContent, Span
+from ..pseudonymizer import MappingRecord, Pseudonymizer, ValueCipher, normalize
+from ..redaction import normalize_rotation, render_pdf
+from ..surrogates import SurrogateFactory
+from ..spans import (
     coverage_signature,
     merge_spans,
     propagate,
@@ -39,7 +39,7 @@ from .spans import (
     render_text,
     resolve_entities,
 )
-from .statistics.usage import add_agent, agent_usage, empty_consumption
+from ..statistics.usage import add_agent, agent_usage, empty_consumption
 
 log = logging.getLogger(__name__)
 
