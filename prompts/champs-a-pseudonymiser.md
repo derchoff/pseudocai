@@ -288,7 +288,8 @@ contiennent pas de données personnelles.
 - `GED_metadata.created`
 - `GED_metadata.docType`
 - `GED_metadata.modified`
-- `GED_metadata.ancestors`
+- `GED_metadata.ancestors[].id`
+- `GED_metadata.ancestors[].type`
 - `GED_metadata.metadatas.Statut`
 - `GED_metadata.metadatas.Date de statut`
 - `GED_metadata.metadatas.Nature`

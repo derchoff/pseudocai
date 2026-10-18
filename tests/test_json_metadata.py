@@ -38,6 +38,7 @@ GED = {
         "ancestors": [
             {"id": "a1", "label": "Année 2026", "type": "periode"},
             {"id": "a3", "label": "Client (11124714)", "type": "client"},
+            {"id": "a4", "label": "Assuré DUPONT Jean", "type": "assure"},
         ],
         "metadatas": {
             "Emetteur du mail": "Paul LEROY <paul.leroy@example.com>",
@@ -75,7 +76,8 @@ def run(settings, data=GED, detector=None):
 
 
 def test_referential_declares_kept_fields_and_service_labels():
-    assert ("DOCUMENT", "*") in RULES.keep and ("GED_metadata", "ancestors") in RULES.keep
+    assert ("DOCUMENT", "*") in RULES.keep and ("GED_metadata", "ancestors", "[]", "id") in RULES.keep
+    assert ("GED_metadata", "ancestors") not in RULES.keep  # les libellés peuvent contenir des noms
     assert ("GED_metadata", "label") in RULES.keep
     assert RULES.service_prefixes == ("Administrateur", "Gestion")
     assert {"administrateur", "gestion"} <= {w.lower() for w in CATALOG.exceptions.words}
@@ -94,7 +96,10 @@ def test_kept_fields_are_copied_unchanged_and_others_pseudonymised(settings):
     text = json.dumps(out, ensure_ascii=False)
     for secret in ("DUPONT", "MARTIN", "LEROY", "BERNARD", "paul.leroy@example.com"):
         assert secret not in text
-    assert out["GED_metadata"]["ancestors"] == GED["GED_metadata"]["ancestors"]  # conservés en entier
+    ancestors = out["GED_metadata"]["ancestors"]
+    assert [(a["id"], a["type"]) for a in ancestors] == [(a["id"], a["type"]) for a in GED["GED_metadata"]["ancestors"]]
+    assert ancestors[0]["label"] == "Année 2026"  # libellé sans personne : inchangé
+    assert ancestors[2]["label"].startswith("Assuré ") and "DUPONT" not in ancestors[2]["label"]
     assert out["GED_metadata"]["label"] == GED["GED_metadata"]["label"]
     assert out["GED_metadata"]["description"].startswith("<<= Décès salarié - ")
     assert meta["Emetteur du mail"].endswith("@example.com>")
@@ -132,8 +137,9 @@ def test_only_unkept_values_reach_the_agents(settings):
     built = build_json_text(GED, RULES)
     texts = " ".join(line.text for line in built.content.lines())
     assert "Souscripteur" not in texts and "Num interne contrat" not in texts and "DOCUMENT" not in texts
-    assert "ancestors" not in texts and "GED_metadata.label" not in texts
-    assert built.kept > 10 and len(built.values) == 6
+    assert "GED_metadata.label" not in texts and "ancestors[0].id" not in texts and "].type" not in texts
+    assert "GED_metadata.ancestors[2].label : Assuré DUPONT Jean" in texts  # libellés analysés
+    assert built.kept > 10 and len(built.values) == 9
 
 
 def test_path_is_never_modified_and_multiline_values_roundtrip(settings):
