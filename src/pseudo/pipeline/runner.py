@@ -1,10 +1,13 @@
 """Orchestration de bout en bout pour un PDF, une image préparée ou un texte déjà extrait (texte d'un
 mail, JSON de métadonnées). Indépendante d'Azure Functions, donc testable.
 
-run_pipeline enchaîne les étapes (steps/) sur un contexte (context.py) :
+run_pipeline enchaîne les étapes (steps/) sur un contexte (context.py), selon l'une des suites :
 
-    lecture ─► détection ─► vérification ─► bilan ─► classification ─► valeurs fictives ─► rendu
-    (read_document, ou use_given_content pour un texte déjà extrait)
+    DOCUMENT  PDF ou image seuls :  lecture ─► détection ─► vérification ─► bilan ─► classification
+                                    ─► valeurs fictives ─► rendu
+    PART      pièce jointe :        la même, sans classification (le mail est classé en entier)
+    TEXT      texte déjà extrait :  détection ─► vérification ─► bilan ─► valeurs fictives
+              (texte d'un mail, JSON de métadonnées ; l'appelant produit la sortie)
 
 Dépendances entre étapes, à respecter si l'ordre change :
 - les jetons sont posés par la détection puis recalculés à chaque tour de vérification ;
@@ -24,15 +27,26 @@ from ..config import Settings
 from ..statistics.usage import empty_consumption
 from .context import PipelineContext, Rejected, Step
 from .models import PipelineInput, PipelineResult, Services
-from .steps import build_records, classify, detect, read_document, render, substitute, use_given_content, verify
+from .steps import (
+    build_records,
+    classify,
+    detect,
+    not_classified,
+    read_document,
+    render,
+    substitute,
+    use_given_content,
+    verify,
+)
 
-# Étapes communes, après la lecture du document.
-ANALYSIS: tuple[Step, ...] = (detect, verify, build_records, classify, substitute, render)
+DOCUMENT: tuple[Step, ...] = (read_document, detect, verify, build_records, classify, substitute, render)
+PART: tuple[Step, ...] = (read_document, detect, verify, build_records, not_classified, substitute, render)
+TEXT: tuple[Step, ...] = (use_given_content, detect, verify, build_records, not_classified, substitute)
 
 
 def steps_for(source: PipelineInput) -> tuple[Step, ...]:
-    """Étapes d'un document : lecture du PDF, ou texte déjà extrait, puis les étapes communes."""
-    return ((use_given_content if source.content is not None else read_document), *ANALYSIS)
+    """Suite par défaut : TEXT pour un texte déjà extrait (source.content), sinon DOCUMENT."""
+    return TEXT if source.content is not None else DOCUMENT
 
 
 def run_pipeline(
@@ -44,18 +58,28 @@ def run_pipeline(
     """Pseudonymise un document de bout en bout.
 
     Contrôles, extraction (texte et OCR), détection, jetons, vérification, classification, rendu.
-    Ne touche à aucun stockage : la publication est faite par l'appelant. steps : étapes à
-    exécuter (défaut : steps_for(source)).
+    Ne touche à aucun stockage : la publication est faite par l'appelant. steps : DOCUMENT, PART,
+    TEXT, ou toute autre suite d'étapes (défaut : steps_for(source)).
     """
     if isinstance(source, bytes):
         source = PipelineInput(pdf=source)
     ctx = _new_context(source, settings, services)
     try:
         for step in steps or steps_for(source):
-            step(ctx)
+            started = time.monotonic()
+            try:
+                step(ctx)
+            finally:  # durée notée même si l'étape arrête le document
+                if ctx.diag is not None:
+                    ctx.diag["durees_s"][_name(step)] = round(time.monotonic() - started, 2)
     except Rejected as rejected:
         return _rejected(ctx, rejected)
     return _result(ctx)
+
+
+def _name(step: Step) -> str:
+    """Nom de l'étape : celui déclaré avec @step, sinon celui de la fonction ou de la classe."""
+    return getattr(step, "name", None) or getattr(step, "__name__", None) or type(step).__name__
 
 
 def _new_context(source: PipelineInput, settings: Settings, services: Services) -> PipelineContext:

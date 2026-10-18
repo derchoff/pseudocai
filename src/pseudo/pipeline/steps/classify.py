@@ -3,29 +3,30 @@
 from __future__ import annotations
 
 import logging
-import time
 
 from ...catalog import CatalogError
 from ...classification import STATUT_DESACTIVEE, STATUT_ERREUR, STATUT_NON_APPLICABLE, Classification, decide, unclassified
 from ...config import Settings
 from ...statistics.usage import agent_usage
-from ..context import PipelineContext
+from ..context import PipelineContext, step
 from ..models import Services
 
 log = logging.getLogger(__name__)
 
 
+@step("classification")
 def classify(ctx: PipelineContext) -> None:
-    """Classe le document ; une partie d'un ensemble (classify=False : pièce jointe, texte d'un mail,
-    JSON) ne l'est pas, l'ensemble étant classé une seule fois par l'appelant."""
-    step = time.monotonic()
-    if ctx.source.classify:
-        ctx.classification = classify_text(ctx.token_text, ctx.settings, ctx.services, ctx.consumption)
-    else:
-        ctx.classification = unclassified(STATUT_NON_APPLICABLE, ctx.settings.unclassified_folder)
+    """Classe le document d'après son texte avec les jetons."""
+    ctx.classification = classify_text(ctx.token_text, ctx.settings, ctx.services, ctx.consumption)
     ctx.report["classification"] = ctx.classification.to_dict()
-    if ctx.diag is not None and ctx.source.classify:
-        ctx.diag["durees_s"]["classification"] = round(time.monotonic() - step, 2)
+
+
+@step("classification")
+def not_classified(ctx: PipelineContext) -> None:
+    """Partie d'un ensemble (pièce jointe, texte d'un mail, JSON) : pas de classement, l'ensemble
+    est classé une seule fois par l'appelant (finalisation du mail) ou suit son document."""
+    ctx.classification = unclassified(STATUT_NON_APPLICABLE, ctx.settings.unclassified_folder)
+    ctx.report["classification"] = ctx.classification.to_dict()
 
 
 def classify_text(

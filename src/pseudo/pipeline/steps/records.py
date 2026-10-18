@@ -9,11 +9,12 @@ from ...fields import FieldCatalog
 from ...models import DocumentContent, Span
 from ...pseudonymizer import MappingRecord
 from ...spans import pseudonymise_document, render_text
-from ..context import PipelineContext
+from ..context import PipelineContext, step
 from ..models import Services
 from .tokens import strategy
 
 
+@step("bilan")
 def build_records(ctx: PipelineContext) -> None:
     """Remplit ctx.records et ctx.token_text (le texte publié en mode jetons)."""
     settings, report = ctx.settings, ctx.report

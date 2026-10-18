@@ -10,11 +10,12 @@ from ...exceptions import apply_exceptions
 from ...models import Span
 from ...spans import merge_spans, propagate, resolve_entities
 from ...statistics.usage import agent_usage
-from ..context import PipelineContext
+from ..context import PipelineContext, step
 from ..diagnostic import agent_stats, localisation_diagnostic
 from .tokens import assign_tokens
 
 
+@step("detection")
 def detect(ctx: PipelineContext) -> None:
     """Zones à remplacer, avec leur jeton (ctx.spans), et entités introuvables (ctx.unresolved)."""
     settings, services, content, lines, report, diag = (
@@ -23,14 +24,14 @@ def detect(ctx: PipelineContext) -> None:
     catalog = ctx.catalog = services.fields() if services.fields else None
     if catalog is not None:
         report["champs"] = list(catalog.types)
-    step = time.monotonic()
+    llm_started = time.monotonic()
     entities = services.detector.detect(lines)
     ctx.consumption["ia"]["detection"] = agent_usage(services.detector)
-    if ctx.source.content is None:
+    if ctx.paged:
         # Pages d'un vrai document (PDF, image) dont le texte part aux agents IA : celles qui ont au
         # moins une ligne non vide. Un texte déjà extrait (corps de mail, JSON) n'a pas de page.
         ctx.consumption["pages_ia"] = len({line.page for line in lines if line.text.strip()})
-    llm_seconds = time.monotonic() - step
+    llm_seconds = time.monotonic() - llm_started
     located: list[dict] | None = [] if diag is not None else None
     spans, ctx.unresolved = resolve_entities(entities, content, settings.fuzzy_min_score, located)
     regex_spans = detect_regex(lines)
@@ -69,4 +70,3 @@ def detect(ctx: PipelineContext) -> None:
         diag["durees_s"]["detection_llm"] = round(llm_seconds, 2)
         if language_spans is not None:
             diag["durees_s"]["detection_language"] = round(language_seconds, 2)
-        diag["durees_s"]["detection"] = round(time.monotonic() - step, 2)

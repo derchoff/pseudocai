@@ -14,9 +14,10 @@ from ...models import DocumentContent, Line, Span
 from ...pseudonymizer import normalize
 from ...spans import pseudonymise_document, render_text
 from ...surrogates import SurrogateFactory
-from ..context import PipelineContext
+from ..context import PipelineContext, step
 
 
+@step("valeurs_fictives")
 def substitute(ctx: PipelineContext) -> None:
     """Pose les valeurs fictives (mode substitution) puis relève les occurrences (ctx.occurrences)."""
     settings, content = ctx.settings, ctx.content

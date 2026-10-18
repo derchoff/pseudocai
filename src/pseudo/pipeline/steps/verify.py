@@ -9,18 +9,18 @@ from ...exceptions import apply_exceptions
 from ...models import DocumentContent, Entity, Line, PageContent, Span
 from ...spans import coverage_signature, merge_spans, propagate, pseudonymise_document, resolve_entities
 from ...statistics.usage import add_agent, agent_usage
-from ..context import PipelineContext
+from ..context import PipelineContext, step
 from ..diagnostic import round_diagnostic
 from .tokens import assign_tokens
 
 
+@step("verification")
 def verify(ctx: PipelineContext) -> None:
     """Complète ctx.spans avec les résidus trouvés ; motif residus_apres_verification si le dernier
     tour trouve encore du nouveau. Sans vérificateur, aucun tour."""
     settings, services, content, catalog, diag = ctx.settings, ctx.services, ctx.content, ctx.catalog, ctx.diag
     exceptions = catalog.exceptions if catalog is not None else None
     still_finding = False
-    step = time.monotonic()
     if services.verifier is not None:
         rounds: list[dict] = []
         for _ in range(settings.verification_rounds):
@@ -57,7 +57,6 @@ def verify(ctx: PipelineContext) -> None:
             ctx.reasons.append("residus_apres_verification")
         if diag is not None:
             diag["verification"] = rounds
-            diag["durees_s"]["verification"] = round(time.monotonic() - step, 2)
     ctx.report["tours_verification"] = ctx.rounds_done
 
 

@@ -23,7 +23,7 @@ from dataclasses import dataclass, field, replace
 from .json_rules import ARRAY, JsonRules
 from .mails.document import text_line
 from .models import DocumentContent, PageContent, Span
-from .pipeline import PipelineInput, PipelineResult, run_pipeline
+from .pipeline import TEXT, PipelineInput, PipelineResult, run_pipeline
 from .spans import pseudonymise_document
 
 
@@ -150,9 +150,10 @@ def pseudonymise_json(data: bytes, settings, services, rules: JsonRules) -> Json
     if not built.values:
         return JsonResult(_dump(parsed), "ok", [], report)
     result = run_pipeline(
-        PipelineInput(pdf=b"", content=built.content, classify=False, source={"origine": "json-metadata", "format": "json"}),
+        PipelineInput(pdf=b"", content=built.content, source={"origine": "json-metadata", "format": "json"}),
         settings,
         services,
+        steps=TEXT,
     )
     report = {**result.report, **report}
     output = _dump(read_back(parsed, built, result.spans)) if result.status == "ok" else None

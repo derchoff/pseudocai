@@ -14,12 +14,15 @@ Ce module expose l'API utilisée par le reste du code, qui ne change pas :
 `from pseudo.pipeline import run_pipeline`.
 """
 
-from .context import PipelineContext, Rejected, Step
+from .context import PipelineContext, Rejected, Step, step
 from .models import Classifier, Detector, PipelineInput, PipelineResult, Renderer, Services, SpanDetector, Verifier
-from .runner import run_pipeline, steps_for
+from .runner import DOCUMENT, PART, TEXT, run_pipeline, steps_for
 from .steps import classify_text
 
 __all__ = [
+    "DOCUMENT",
+    "PART",
+    "TEXT",
     "Classifier",
     "Detector",
     "PipelineContext",
@@ -33,5 +36,6 @@ __all__ = [
     "Verifier",
     "classify_text",
     "run_pipeline",
+    "step",
     "steps_for",
 ]

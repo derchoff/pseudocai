@@ -3,17 +3,16 @@ texte et OCR), écriture manuscrite ; ou texte déjà extrait fourni par l'appel
 
 from __future__ import annotations
 
-import time
-
 import pymupdf
 
 from ...extraction import extract_document
 from ...models import DocumentContent
 from ...redaction import normalize_rotation
-from ..context import PipelineContext, Rejected
+from ..context import PipelineContext, Rejected, step
 from ..diagnostic import pages_diagnostic
 
 
+@step("extraction")
 def read_document(ctx: PipelineContext) -> None:
     """Ouvre le PDF, le contrôle et en extrait le texte positionné (couche texte et OCR).
 
@@ -22,7 +21,6 @@ def read_document(ctx: PipelineContext) -> None:
     """
     source, settings, report = ctx.source, ctx.settings, ctx.report
     pdf_bytes = source.pdf
-    started = time.monotonic()
     # Ouverture et contrôles préalables
     try:
         doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
@@ -59,9 +57,9 @@ def read_document(ctx: PipelineContext) -> None:
     doc.close()
     ctx.content = DocumentContent(pages=pages)
     ctx.lines = ctx.content.lines()
+    ctx.paged = True
     if ctx.diag is not None:
         ctx.diag["extraction"] = pages_diagnostic(pages)
-        ctx.diag["durees_s"]["extraction"] = round(time.monotonic() - started, 2)
     ocr_pages = [p for p in pages if p.source == "ocr"]
     report.update(
         pages=len(pages),
@@ -97,6 +95,7 @@ def read_document(ctx: PipelineContext) -> None:
             raise Rejected("manuscrit_detecte")
 
 
+@step("extraction")
 def use_given_content(ctx: PipelineContext) -> None:
     """Texte déjà extrait par l'appelant (texte d'un mail, JSON de métadonnées) : ni PDF, ni OCR."""
     ctx.content = ctx.source.content

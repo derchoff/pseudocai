@@ -19,7 +19,7 @@ import logging
 
 from ..jobs import Job
 from ..outputs import job_source_blob
-from ..pipeline import PipelineInput, run_pipeline
+from ..pipeline import TEXT, PipelineInput, run_pipeline
 from .document import build_mail_text, read_back
 from .finalize import TEXT_PART, try_finalize
 from .html_body import HtmlBody
@@ -44,9 +44,10 @@ def handle_mail_text(job: Job, runtime) -> str:
     html = HtmlBody(mail.body) if mail.body_format == "html" else None
     built = build_mail_text(mail, html)
     result = run_pipeline(
-        PipelineInput(pdf=b"", content=built.content, classify=False, source={"origine": "mail", "format": "eml"}),
+        PipelineInput(pdf=b"", content=built.content, source={"origine": "mail", "format": "eml"}),
         settings,
         runtime.services,
+        steps=TEXT,
     )
     runtime.mapping_store.save(result.records)  # avant toute publication : un jeton publié est réversible
     pseudo = read_back(built, mail, result.spans, html)

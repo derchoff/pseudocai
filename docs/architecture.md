@@ -516,7 +516,7 @@ noms étant limitées, deux personnes différentes peuvent recevoir le même fau
 | `geometry.py` | Homographies en Python pur, géométrie des pages préparées | ②③ |
 | `prepared_image.py` | Entrée « image préparée » de l'étape ③ : OCR transformé, rendu sur l'image d'origine | ③ |
 | `handler.py` | Étape ③ : chargement du job, pipeline, publication | app principale |
-| `pipeline/` | Pipeline de pseudonymisation, indépendant du format (`PipelineInput`). `runner.py` enchaîne les étapes de `steps/` (lecture, détection, vérification, bilan, classification, valeurs fictives, rendu), qui lisent et complètent un `PipelineContext` ; `Rejected` arrête un document refusé. API exposée par `pipeline/__init__.py` | ③, CLI |
+| `pipeline/` | Pipeline de pseudonymisation, indépendant du format (`PipelineInput`). `runner.py` enchaîne les étapes de `steps/` (lecture, détection, vérification, bilan, classification, valeurs fictives, rendu), qui lisent et complètent un `PipelineContext` ; `Rejected` arrête un document refusé. Trois suites : `DOCUMENT` (PDF, image), `PART` (pièce de mail, sans classement), `TEXT` (texte d'un mail, JSON : sans lecture ni rendu). Le runner mesure la durée de chaque étape. API exposée par `pipeline/__init__.py` | ③, CLI |
 | `outputs.py` | Écriture des sorties et de la quarantaine, métadonnées, traces, nettoyages | ①②③ |
 | `statistics/` (`statistics.py`, `usage.py`) | Fiches de statistiques (Cosmos DB `statistiques`) et consommation de chaque traitement ; voir [statistiques](statistiques.md) | ①②③ |
 | `extraction.py`, `spans.py`, `redaction.py`, `detection/`, `pseudonymizer.py`, `classification.py`… | Cœur du traitement (PDF) | ③ |

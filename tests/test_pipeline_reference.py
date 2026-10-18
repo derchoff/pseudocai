@@ -24,7 +24,7 @@ import pytest
 from pseudo.config import Settings
 from pseudo.json_metadata import build_json_text
 from pseudo.json_rules import JsonRules
-from pseudo.pipeline import PipelineInput, run_pipeline
+from pseudo.pipeline import PART, PipelineInput, run_pipeline
 from test_classification import FakeClassifier, scores
 from test_handwriting import HandwrittenOcr
 from test_json_metadata import GED
@@ -84,6 +84,11 @@ def case_native_substitution(monkeypatch):
     return run_pipeline(make_text_pdf(), settings, _full_services())
 
 
+def case_part(monkeypatch):
+    """Pièce jointe d'un mail : PDF natif analysé et rendu, sans classement (le mail l'est en entier)."""
+    return run_pipeline(make_text_pdf(), _settings(monkeypatch), _full_services(), steps=PART)
+
+
 def case_scanned(monkeypatch):
     """PDF scanné lu par l'OCR, sans vérificateur ni Language."""
     pdf, truth = make_scanned_pdf()
@@ -107,7 +112,7 @@ def case_text_content(monkeypatch):
     """Texte déjà extrait (JSON de métadonnées), sans classement ni rendu."""
     built = build_json_text(GED, JsonRules())
     detector = StatsDetector({"DUPONT": "NOM", "Jean": "PRENOM", "MARTIN": "NOM", "Claire": "PRENOM"}, only_first=False)
-    source = PipelineInput(pdf=b"", content=built.content, classify=False, source={"origine": "json-metadata", "format": "json"})
+    source = PipelineInput(pdf=b"", content=built.content, source={"origine": "json-metadata", "format": "json"})
     settings = _settings(monkeypatch, PSEUDO_OUTPUT_MODE="substitution")
     return run_pipeline(source, settings, _full_services(detector=detector))
 

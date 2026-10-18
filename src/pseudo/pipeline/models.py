@@ -80,11 +80,9 @@ class PipelineInput:
     force_ocr: bool = False  # True pour une image : toutes les pages sont des « scans »
     renderer: Renderer | None = None  # produit le document de sortie (défaut : PDF caviardé)
     source: dict = field(default_factory=dict)  # origine et préparation, ajoutées au rapport
-    # Texte déjà extrait (corps d'un mail…) : ni PDF, ni OCR, ni rendu ; l'appelant produit la sortie
-    # à partir de PipelineResult.spans.
+    # Texte déjà extrait (texte d'un mail, JSON) : suite TEXT, ni PDF, ni OCR, ni rendu ; l'appelant
+    # produit la sortie à partir de PipelineResult.spans.
     content: DocumentContent | None = None
-    # False pour une partie d'un ensemble (pièce jointe d'un mail) : l'ensemble est classé une fois.
-    classify: bool = True
 
 
 @dataclass

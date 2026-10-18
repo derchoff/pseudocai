@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Callable, Protocol
 
 from ..classification import Classification
 from ..config import Settings
@@ -35,6 +35,7 @@ class PipelineContext:
     # Lecture du document
     content: DocumentContent | None = None
     lines: list[Line] = field(default_factory=list)
+    paged: bool = False  # True pour un PDF ou une image lus page par page (pas un texte déjà extrait)
 
     # Détection et vérification
     catalog: FieldCatalog | None = None  # référentiel des champs (normalisation, exceptions, valeurs fictives)
@@ -52,11 +53,29 @@ class PipelineContext:
 
 
 class Step(Protocol):
-    """Étape du pipeline : complète le contexte, ou lève Rejected pour arrêter le document."""
+    """Étape du pipeline : complète le contexte, ou lève Rejected pour arrêter le document.
+    name : nom de l'étape dans le rapport (durée dans diagnostic.durees_s)."""
+
+    name: str
 
     def __call__(self, ctx: PipelineContext, /) -> None:
         """Exécute l'étape sur le document du contexte."""
         ...
+
+
+def step(name: str) -> Callable[[Callable[[PipelineContext], None]], Step]:
+    """Déclare une fonction comme étape du pipeline, sous ce nom :
+
+        @step("detection")
+        def detect(ctx: PipelineContext) -> None: ...
+    """
+
+    def declare(fn: Callable[[PipelineContext], None]) -> Step:
+        """Pose le nom de l'étape sur la fonction."""
+        fn.name = name  # type: ignore[attr-defined]
+        return fn  # type: ignore[return-value]
+
+    return declare
 
 
 class Rejected(Exception):

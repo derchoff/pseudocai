@@ -2,18 +2,13 @@
 
 from __future__ import annotations
 
-import time
-
 from ...redaction import render_pdf
-from ..context import PipelineContext
+from ..context import PipelineContext, step
 
 
+@step("rendu")
 def render(ctx: PipelineContext) -> None:
-    """Produit ctx.output ; un texte déjà extrait sans rendu dédié est rendu par l'appelant."""
+    """Produit ctx.output avec le rendu dédié du document (image), sinon le PDF caviardé."""
     source = ctx.source
-    if source.content is None or source.renderer is not None:
-        step = time.monotonic()
-        renderer = source.renderer or render_pdf
-        ctx.output = renderer(source.pdf, ctx.content, ctx.spans, ctx.settings.ocr_render_dpi)
-        if ctx.diag is not None:
-            ctx.diag["durees_s"]["rendu"] = round(time.monotonic() - step, 2)
+    renderer = source.renderer or render_pdf
+    ctx.output = renderer(source.pdf, ctx.content, ctx.spans, ctx.settings.ocr_render_dpi)

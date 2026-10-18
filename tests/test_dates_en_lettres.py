@@ -81,7 +81,7 @@ def test_split_letter_date_gets_one_surrogate_spread_over_lines(monkeypatch):
     content = DocumentContent(pages=[PageContent(index=0, source="native", lines=lines)])
     svc = Services(detector=_Detector(), pseudonymizer=Pseudonymizer(b"k" * 32), cipher=ValueCipher(b"e" * 32),
                    surrogates=SurrogateFactory(b"k" * 32, current_year=2026))
-    result = run_pipeline(PipelineInput(pdf=b"", content=content, classify=False), Settings.from_env(), svc)
+    result = run_pipeline(PipelineInput(pdf=b"", content=content), Settings.from_env(), svc)
     assert result.status == "ok", result.reasons
     first, second = sorted(result.spans, key=lambda s: s.line_id)
     joined = f"{first.surrogate} {second.surrogate}"

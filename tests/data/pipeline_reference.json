@@ -708,12 +708,426 @@
      "zones_retirees_exceptions": 0
     },
     "durees_s": {
+     "bilan": "<variable>",
      "classification": "<variable>",
      "detection": "<variable>",
      "detection_language": "<variable>",
      "detection_llm": "<variable>",
      "extraction": "<variable>",
      "rendu": "<variable>",
+     "valeurs_fictives": "<variable>",
+     "verification": "<variable>"
+    },
+    "extraction": [
+     {
+      "lignes": 6,
+      "lignes_texte_images": 0,
+      "mots": 24,
+      "page": 1,
+      "source": "native"
+     }
+    ],
+    "localisation": {
+     "echecs": [],
+     "methodes": {
+      "exacte": 2
+     }
+    },
+    "verification": [
+     {
+      "a_trouve_du_nouveau": true,
+      "agent": {
+       "duree_s": "<variable>",
+       "entites_retenues": 1
+      },
+      "lignes_completees": [
+       "p1-l4"
+      ],
+      "localisation": {
+       "echecs": [],
+       "methodes": {
+        "exacte": 1
+       }
+      },
+      "nouveaux_caracteres_masques": 5,
+      "nouvelles_zones_par_type": {
+       "ADRESSE": 1
+      },
+      "residus": [
+       {
+        "ligne": "p1-l4",
+        "type": "ADRESSE"
+       }
+      ],
+      "residus_par_type": {
+       "ADRESSE": 1
+      },
+      "residus_signales": 1,
+      "tour": 1
+     },
+     {
+      "a_trouve_du_nouveau": false,
+      "agent": {
+       "duree_s": "<variable>",
+       "entites_retenues": 0
+      },
+      "lignes_completees": [],
+      "localisation": {
+       "echecs": [],
+       "methodes": {}
+      },
+      "nouveaux_caracteres_masques": 0,
+      "nouvelles_zones_par_type": {},
+      "residus": [],
+      "residus_par_type": {},
+      "residus_signales": 0,
+      "tour": 2
+     }
+    ]
+   },
+   "duree_secondes": "<variable>",
+   "entites_par_source": {
+    "llm": 2,
+    "propagation": 1,
+    "regex": 2,
+    "verifier": 1
+   },
+   "entites_par_type": {
+    "ADRESSE": 1,
+    "DATE_NAISSANCE": 1,
+    "NOM": 2,
+    "PRENOM": 1,
+    "TELEPHONE": 1
+   },
+   "jetons_distincts": 5,
+   "lignes": 6,
+   "lignes_texte_images": 0,
+   "mode_sortie": "jetons",
+   "motifs": [],
+   "mots_manuscrits": 0,
+   "pages": 1,
+   "pages_natives": 1,
+   "pages_ocr": 0,
+   "pipeline_version": "0.2.0",
+   "politique_manuscrit": "quarantaine",
+   "prompt_detection_sha256": "fake",
+   "prompt_verification_sha256": "fake",
+   "statut": "ok",
+   "tours_verification": 2
+  },
+  "spans": [
+   {
+    "end": 19,
+    "line_id": "p1-l2",
+    "source": "llm",
+    "start": 13,
+    "surrogate": null,
+    "token": "[NOM_774CC8C637]",
+    "type": "NOM",
+    "value": null
+   },
+   {
+    "end": 24,
+    "line_id": "p1-l2",
+    "source": "llm",
+    "start": 20,
+    "surrogate": null,
+    "token": "[PRENOM_752AD86DEB]",
+    "type": "PRENOM",
+    "value": null
+   },
+   {
+    "end": 16,
+    "line_id": "p1-l3",
+    "source": "regex",
+    "start": 6,
+    "surrogate": null,
+    "token": "[DATE_NAISSANCE_EA4E4A65DB]",
+    "type": "DATE_NAISSANCE",
+    "value": null
+   },
+   {
+    "end": 16,
+    "line_id": "p1-l4",
+    "source": "verifier",
+    "start": 11,
+    "surrogate": null,
+    "token": "[ADRESSE_DF7E27E948]",
+    "type": "ADRESSE",
+    "value": null
+   },
+   {
+    "end": 18,
+    "line_id": "p1-l5",
+    "source": "regex",
+    "start": 4,
+    "surrogate": null,
+    "token": "[TELEPHONE_F1E4A8C6C5]",
+    "type": "TELEPHONE",
+    "value": null
+   },
+   {
+    "end": 18,
+    "line_id": "p1-l6",
+    "source": "propagation",
+    "start": 12,
+    "surrogate": null,
+    "token": "[NOM_774CC8C637]",
+    "type": "NOM",
+    "value": null
+   }
+  ],
+  "status": "ok",
+  "text": "===== Page 1 =====\nAttestation\nPatient : M. [NOM_774CC8C637] [PRENOM_752AD86DEB]\nNe le [DATE_NAISSANCE_EA4E4A65DB]\n12 rue des [ADRESSE_DF7E27E948] 75011 PARIS\nTel [TELEPHONE_F1E4A8C6C5]\nSignature : [NOM_774CC8C637]\n",
+  "token_text": "===== Page 1 =====\nAttestation\nPatient : M. [NOM_774CC8C637] [PRENOM_752AD86DEB]\nNe le [DATE_NAISSANCE_EA4E4A65DB]\n12 rue des [ADRESSE_DF7E27E948] 75011 PARIS\nTel [TELEPHONE_F1E4A8C6C5]\nSignature : [NOM_774CC8C637]\n"
+ },
+ "part": {
+  "classification": {
+   "dossier": "non-classe",
+   "multi_type": false,
+   "principal": "NON_CLASSE",
+   "prompt_sha256": null,
+   "seuil": null,
+   "seuil_secondaire": null,
+   "statut": "non_applicable",
+   "types": []
+  },
+  "content_lines": [
+   [
+    "p1-l1",
+    "Attestation",
+    "native"
+   ],
+   [
+    "p1-l2",
+    "Patient : M. DUPONT Jean",
+    "native"
+   ],
+   [
+    "p1-l3",
+    "Ne le 12/03/1985",
+    "native"
+   ],
+   [
+    "p1-l4",
+    "12 rue des Lilas 75011 PARIS",
+    "native"
+   ],
+   [
+    "p1-l5",
+    "Tel 06 12 34 56 78",
+    "native"
+   ],
+   [
+    "p1-l6",
+    "Signature : DUPONT",
+    "native"
+   ]
+  ],
+  "occurrences": [
+   {
+    "caracteres": [
+     13,
+     19
+    ],
+    "jeton": "NOM_774CC8C637",
+    "ligne": "p1-l2",
+    "page": 1,
+    "position": [
+     136.03,
+     83.1,
+     186.7,
+     99.59
+    ],
+    "quadrilateres": null,
+    "type": "NOM",
+    "valeur_fictive": null
+   },
+   {
+    "caracteres": [
+     20,
+     24
+    ],
+    "jeton": "PRENOM_752AD86DEB",
+    "ligne": "p1-l2",
+    "page": 1,
+    "position": [
+     190.03,
+     83.1,
+     216.05,
+     99.59
+    ],
+    "quadrilateres": null,
+    "type": "PRENOM",
+    "valeur_fictive": null
+   },
+   {
+    "caracteres": [
+     6,
+     16
+    ],
+    "jeton": "DATE_NAISSANCE_EA4E4A65DB",
+    "ligne": "p1-l3",
+    "page": 1,
+    "position": [
+     103.34,
+     107.1,
+     163.39,
+     123.59
+    ],
+    "quadrilateres": null,
+    "type": "DATE_NAISSANCE",
+    "valeur_fictive": null
+   },
+   {
+    "caracteres": [
+     11,
+     16
+    ],
+    "jeton": "ADRESSE_DF7E27E948",
+    "ligne": "p1-l4",
+    "page": 1,
+    "position": [
+     132.04,
+     131.1,
+     156.71,
+     147.59
+    ],
+    "quadrilateres": null,
+    "type": "ADRESSE",
+    "valeur_fictive": null
+   },
+   {
+    "caracteres": [
+     4,
+     18
+    ],
+    "jeton": "TELEPHONE_F1E4A8C6C5",
+    "ligne": "p1-l5",
+    "page": 1,
+    "position": [
+     92.0,
+     155.1,
+     172.07,
+     171.59
+    ],
+    "quadrilateres": null,
+    "type": "TELEPHONE",
+    "valeur_fictive": null
+   },
+   {
+    "caracteres": [
+     12,
+     18
+    ],
+    "jeton": "NOM_774CC8C637",
+    "ligne": "p1-l6",
+    "page": 1,
+    "position": [
+     133.37,
+     179.1,
+     184.03,
+     195.59
+    ],
+    "quadrilateres": null,
+    "type": "NOM",
+    "valeur_fictive": null
+   }
+  ],
+  "output_text": "Attestation\nPatient : M.\nNe le\n12 rue des\n75011 PARIS\nTel\nSignature :\n[NOM_774CC8C637]\n[PRENOM_752AD86DEB]\n[DATE_NAISSANCE_EA4E4A65DB]\n[ADRESSE_DF7E27E948]\n[TELEPHONE_F1E4A8C6C5]\n[NOM_774CC8C637]\n",
+  "reasons": [],
+  "records": [
+   {
+    "fingerprint": "774cc8c637f804f373b8e44a2a1ba956c76720238d5fd082f36e7b3db9602764",
+    "id": "NOM_774CC8C637",
+    "type": "NOM"
+   },
+   {
+    "fingerprint": "752ad86deb356c11abb91697b85bf53248ed6b9a0614453b3907dd9deafd3cfa",
+    "id": "PRENOM_752AD86DEB",
+    "type": "PRENOM"
+   },
+   {
+    "fingerprint": "ea4e4a65db33bcc783363c8bda2c117930ac4a8b456a2891f1fa78544b1297fd",
+    "id": "DATE_NAISSANCE_EA4E4A65DB",
+    "type": "DATE_NAISSANCE"
+   },
+   {
+    "fingerprint": "df7e27e94860997e2f5b6088fe8ec040384eaa28433037320242c16a246f3faf",
+    "id": "ADRESSE_DF7E27E948",
+    "type": "ADRESSE"
+   },
+   {
+    "fingerprint": "f1e4a8c6c58ff1fd7cb50a027428de20195cbc137e3a57926b24042e35268c13",
+    "id": "TELEPHONE_F1E4A8C6C5",
+    "type": "TELEPHONE"
+   }
+  ],
+  "report": {
+   "classification": {
+    "dossier": "non-classe",
+    "multi_type": false,
+    "principal": "NON_CLASSE",
+    "prompt_sha256": null,
+    "seuil": null,
+    "seuil_secondaire": null,
+    "statut": "non_applicable",
+    "types": []
+   },
+   "consommation": {
+    "ia": {
+     "classification": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     },
+     "detection": {
+      "appels": 1,
+      "jetons_entree": 1200,
+      "jetons_raisonnement": 64,
+      "jetons_sortie": 150
+     },
+     "verification": {
+      "appels": 0,
+      "jetons_entree": 0,
+      "jetons_raisonnement": 0,
+      "jetons_sortie": 0
+     }
+    },
+    "language": {
+     "caracteres": 120,
+     "enregistrements": 1
+    },
+    "pages_ia": 1,
+    "pages_ocr": 1
+   },
+   "diagnostic": {
+    "detection": {
+     "language": 0,
+     "llm": {
+      "appels": 1,
+      "entites_rendues": 3,
+      "entites_retenues": 2,
+      "jetons_entree": 1200,
+      "jetons_raisonnement": 64,
+      "jetons_sortie": 150
+     },
+     "propagation": 5,
+     "regex": 2,
+     "zones_avant_fusion": 4,
+     "zones_retenues": 5,
+     "zones_retirees_exceptions": 0
+    },
+    "durees_s": {
+     "bilan": "<variable>",
+     "classification": "<variable>",
+     "detection": "<variable>",
+     "detection_language": "<variable>",
+     "detection_llm": "<variable>",
+     "extraction": "<variable>",
+     "rendu": "<variable>",
+     "valeurs_fictives": "<variable>",
      "verification": "<variable>"
     },
     "extraction": [
@@ -1095,11 +1509,14 @@
      "zones_retirees_exceptions": 0
     },
     "durees_s": {
+     "bilan": "<variable>",
      "classification": "<variable>",
      "detection": "<variable>",
      "detection_llm": "<variable>",
      "extraction": "<variable>",
-     "rendu": "<variable>"
+     "rendu": "<variable>",
+     "valeurs_fictives": "<variable>",
+     "verification": "<variable>"
     },
     "extraction": [
      {
@@ -1582,9 +1999,13 @@
      "zones_retirees_exceptions": 0
     },
     "durees_s": {
+     "bilan": "<variable>",
+     "classification": "<variable>",
      "detection": "<variable>",
      "detection_language": "<variable>",
      "detection_llm": "<variable>",
+     "extraction": "<variable>",
+     "valeurs_fictives": "<variable>",
      "verification": "<variable>"
     },
     "extraction": [
@@ -1781,7 +2202,9 @@
     "pages_ocr": 0
    },
    "diagnostic": {
-    "durees_s": {}
+    "durees_s": {
+     "extraction": "<variable>"
+    }
    },
    "motifs": [
     "pdf_illisible"

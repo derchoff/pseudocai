@@ -10,7 +10,7 @@ import logging
 
 from ..jobs import ORIGIN_IMAGE, Job
 from ..outputs import delete_work_files, job_source_blob
-from ..pipeline import PipelineInput, run_pipeline
+from ..pipeline import PART, PipelineInput, run_pipeline
 from .finalize import try_finalize
 from .workspace import MailWorkspace
 
@@ -36,12 +36,10 @@ def handle_mail_part(job: Job, runtime) -> str:
 
             work = runtime.blob_service.get_container_client(settings.work_container)
             pipeline_input = load_image_input(job, original, work, runtime.services.ocr, settings)
-            pipeline_input.classify = False
         else:
-            pipeline_input = PipelineInput(
-                pdf=original, classify=False, source={"origine": "mail", "format": job.source_format}
-            )
-        result = run_pipeline(pipeline_input, settings, runtime.services)
+            pipeline_input = PipelineInput(pdf=original, source={"origine": "mail", "format": job.source_format})
+        # Suite PART : pas de classement, le mail est classé en entier à sa finalisation.
+        result = run_pipeline(pipeline_input, settings, runtime.services, steps=PART)
         if result.status == "ok":
             runtime.mapping_store.save(result.records)
             ws.put(f"out/part-{part}", result.output)  # nommée à la finalisation (out/names.json)
