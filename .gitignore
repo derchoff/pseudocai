@@ -53,3 +53,6 @@ terraform.rc
 # planout
 # Sorties de scripts/copy-echantillon.ps1 : noms de fichiers d'un corpus réel
 echantillon*/
+
+# Module de classification (documentation et code en cours de conception, non versionnés)
+/classificateur/
