@@ -6,8 +6,7 @@ pseudonymisés, classés par type et rangés.
 Les images peuvent être des photos de smartphone ou des scans : JPEG, PNG, HEIC, TIFF, WebP, BMP.
 
 Données traitées : **nom, prénom, date de naissance, NIR (n° de sécurité sociale), e-mail,
-adresse postale, téléphone**, ainsi que, pour les cartes grises, **immatriculation, numéro de
-châssis (VIN) et numéro de formule**. La liste se configure dans
+adresse postale, téléphone**. La liste se configure dans
 [prompts/champs-a-pseudonymiser.md](prompts/champs-a-pseudonymiser.md).
 
 Par défaut, chaque valeur est remplacée par une **valeur fictive réaliste**, au même format :
@@ -45,7 +44,7 @@ incoming/ ─► Event Grid ─► [incoming-events] ─► ① Routage (Functio
 - **Un mail `.eml`** (option `enable_mail_processing`) donne un dossier par mail : en-têtes,
   corps (HTML ou texte) et pièces jointes pseudonymisés, rapport. Les organisations partenaires
   listées dans le référentiel (noms, domaines e-mail) ne sont pas pseudonymisées.
-- **Chaque document est classé par type** (dentaire, optique, kinésithérapie, psychologie, carte grise…) et
+- **Chaque document est classé par type** (dentaire, optique, kinésithérapie, psychologie, actes d'état civil, BIA…) et
   rangé dans le sous-dossier correspondant, y compris en quarantaine. Les types se déclarent
   dans [prompts/types-documents.md](prompts/types-documents.md), sans redéploiement.
 

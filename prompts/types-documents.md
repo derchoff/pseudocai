@@ -74,19 +74,6 @@ actes, les codes de facturation et le vocabulaire.
 - **Ne pas confondre** : psychiatre (médecin : consultation médicale, → `NON_CLASSE` tant
   qu'aucun type dédié n'existe).
 
-## CARTE_GRISE — Certificat d'immatriculation d'un véhicule
-
-- **Dossier** : carte-grise
-- **Indices** : « Certificat d'immatriculation », « carte grise » ; rubriques codifiées `A`, `B`,
-  `C.1`, `C.3`, `D.1` (marque), `D.2`, `D.2.1` (CNIT), `D.3` (dénomination commerciale), `E`,
-  `F.1`, `G`, `J` (catégorie `M1`…), `J.1` (genre `VP`, `CTTE`…), `K` (numéro de réception),
-  `P.1` (cylindrée), `P.3` (carburant), `P.6` (puissance administrative), `S.1` (places), `V.7`
-  (CO2), `X.1` (visite technique), `Y.1` à `Y.6` (taxes) ; numéro de formule ; mention
-  « est le propriétaire du véhicule ».
-- **Ne pas confondre** : facture de garage, constat amiable, contrat ou attestation d'assurance
-  auto qui citent un véhicule sans en être le certificat d'immatriculation (→ `NON_CLASSE` tant
-  qu'aucun type dédié n'existe).
-
 ## ACTE_NAISSANCE — Acte de naissance
 
 - **Dossier** : acte-naissance

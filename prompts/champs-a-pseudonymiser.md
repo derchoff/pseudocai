@@ -63,10 +63,6 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
     valeur** : `Dr DUPONT` → NOM `DUPONT` seulement ; `Docteur` seul n'est rien à signaler ;
   - écriture en MAJUSCULES à côté d'un prénom en casse normale (`Jean DUPONT`) ;
   - blocs d'adresse de destinataire, signatures en bas de page, champs « Fait par » ;
-  - rubrique `C.1` d'une carte grise (titulaire) : nom PUIS prénom, tous deux en MAJUSCULES
-    (`LEMAIRE SOPHIE` → NOM `LEMAIRE`, PRENOM `SOPHIE`), parfois sur deux lignes ;
-  - rubrique `C.4.1` d'une carte grise : nombre de titulaires suivi du nom du cotitulaire
-    (`C.4.1 2 DELAROCHE` → NOM `DELAROCHE` ; le chiffre `2` n'est pas à marquer) ;
   - actes de naissance, de décès et actes notariés : l'enfant ou le défunt, ses parents
     (`fils de`, `fille de`), son conjoint (`époux de`, `épouse de`, `veuf de`, `veuve de`), le
     déclarant, les témoins, l'officier de l'état civil, le notaire (`Maître`, `Me`) et les
@@ -75,9 +71,7 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
   comprises.
 - **Ne pas inclure** : noms de sociétés, d'établissements, de marques, de produits, de
   médicaments ; noms de villes ; noms de voies quand ils font partie d'une adresse (ils
-  relèvent alors du type ADRESSE) ; sur une carte grise, marque et modèle du véhicule
-  (rubriques `D.1`, `D.2`, `D.3`, ex. `PEUGEOT`, `308`), même écrits en MAJUSCULES comme un nom ;
-  civilités et titres (`Dr`, `Docteur`…) ; mots du vocabulaire du document, même en MAJUSCULES
+  relèvent alors du type ADRESSE) ; civilités et titres (`Dr`, `Docteur`…) ; mots du vocabulaire du document, même en MAJUSCULES
   ou en début de ligne (`DEVIS`, `Facture`, voir « Mots à ne jamais pseudonymiser »).
 
 ## PRENOM — Prénom d'une personne physique
@@ -149,8 +143,7 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
   `Immatriculation`, `N° d'assuré`, `Carte Vitale`.
 - **Inclure** la clé si elle est présente ; un NIR à 13 caractères sans clé est aussi un NIR.
 - **Ne pas confondre** avec : IBAN, SIRET/SIREN, numéro de dossier, numéro de facture,
-  numéro de téléphone, numéro ADELI/RPPS ; sur une carte grise, `Immatriculation` désigne la
-  plaque du véhicule (type IMMATRICULATION), pas le NIR.
+  numéro de téléphone, numéro ADELI/RPPS.
 
 ## EMAIL — Adresse électronique
 
@@ -191,52 +184,6 @@ des mots ou des nombres, des retours à la ligne arbitraires et des mots collés
 - **Adresse sur plusieurs lignes** : retourner **un fragment par ligne**, tous avec le même
   identifiant `group` (ex. `"a1"`).
 - **Ne pas inclure** : ville citée seule hors adresse (`Fait à Paris`), libellés (`Adresse :`).
-
-## IMMATRICULATION — Numéro d'immatriculation d'un véhicule (plaque)
-
-- **Normalisation** : alphanumerique
-- **Substitution** : generique
-- **Définition** : numéro inscrit sur la plaque d'un véhicule, qui permet de remonter à son
-  titulaire.
-- **Formes** : format actuel `AB-123-CD` (aussi `AB 123 CD`, `AB123CD`) ; ancien format
-  `1234 AB 75`, `123 ABC 2A` ; plaques étrangères quand elles sont désignées comme telles.
-- **Indices** : rubrique `A` d'une carte grise (certificat d'immatriculation), `Immatriculation`,
-  `N° d'immatriculation`, `Plaque`, `Véhicule immatriculé`, constats amiables, PV, factures de
-  garage, contrats d'assurance auto ; sur une carte grise, le numéro est **répété sans libellé**
-  dans le coupon détachable et, sans tirets (`AB123CD`), dans la bande de lecture automatique
-  (voir les règles transverses).
-- **Ne pas confondre** : sur une carte grise, « immatriculation » désigne la plaque, pas le NIR ;
-  numéro de formule de la carte grise (type NUMERO_FORMULE) ; numéro d'identification du
-  véhicule (type NUMERO_VIN) ; code de réception `e2*2007/46*…` ; CNIT (rubrique `D.2.1`).
-
-## NUMERO_VIN — Numéro d'identification du véhicule (VIN, numéro de châssis)
-
-- **Normalisation** : alphanumerique
-- **Substitution** : generique
-- **Définition** : identifiant unique du véhicule, gravé sur le châssis.
-- **Formes** : 17 caractères, lettres majuscules et chiffres, sans `I`, `O` ni `Q`
-  (ex. `VF3LBHNZ6KS214587`), parfois avec des espaces parasites dus à l'OCR.
-- **Indices** : rubrique `E` d'une carte grise, `VIN`, `N° de série`, `Numéro de châssis`,
-  `N° d'identification du véhicule`, `N° de série du type` ; répété sans libellé dans le coupon
-  détachable et dans la bande de lecture automatique d'une carte grise.
-- **Ne pas confondre** : type, variante, version (rubrique `D.2`), CNIT (rubrique `D.2.1`),
-  numéro de réception (rubrique `K`).
-
-## NUMERO_FORMULE — Numéro de formule d'une carte grise
-
-- **Normalisation** : alphanumerique
-- **Substitution** : generique
-- **Définition** : numéro du document carte grise lui-même, demandé notamment pour une
-  cession ou une déclaration de perte.
-- **Formes** :
-  - format actuel : année d'émission sur 4 chiffres + 2 lettres + 5 chiffres (`2019AB45218`) ;
-  - formats anciens : année sur 2 chiffres + 2 lettres + 6 chiffres (`98TN036623`), ou autres
-    combinaisons de chiffres et de lettres de 10 à 11 caractères.
-- **Indices** : `N° de formule`, `Numéro de formule`, `Formule n°`, en-tête ou bas d'une carte
-  grise ; répété sans libellé dans le coupon détachable (souvent sous le numéro
-  d'immatriculation et la date) et dans la 2e ligne de la bande de lecture automatique.
-- **Ne pas confondre** : numéro d'immatriculation (type IMMATRICULATION), numéro de facture ou de
-  dossier.
 
 ---
 
@@ -364,20 +311,14 @@ Ces organisations sont nos partenaires : leur nom n'est pas une donnée personne
 4. Les jetons de pseudonymisation déjà présents de la forme `[TYPE_XXXXXXXX]` ne sont jamais
    des données personnelles.
 5. **Répétitions sans libellé** : certains documents répètent leurs données dans une partie
-   détachable ou récapitulative, sans libellé (coupon détachable d'une carte grise, talon
-   d'un chèque, souche d'un formulaire). Une valeur déjà reconnue ailleurs dans le document
+   détachable ou récapitulative, sans libellé (coupon ou talon détachable, souche d'un
+   formulaire). Une valeur déjà reconnue ailleurs dans le document
    doit aussi être signalée là, même isolée sur sa ligne.
 6. **Bandes de lecture automatique** (lignes de caractères majuscules et de chiffres avec des
-   chevrons `<`, en bas d'une carte grise, d'une carte d'identité ou d'un passeport) : les
-   données y sont **collées** les unes aux autres, sans espace ni tiret. Signaler **chaque
-   valeur incluse**, avec son type, en recopiant **exactement la portion de la chaîne** qui la
-   contient. Exemples sur une carte grise :
-   - `CRFRAAB123CD0VF7X18E00018E8472…` → IMMATRICULATION `AB123CD`, NUMERO_VIN
-     `VF7X18E00018E8472` ;
-   - `CI<<MERSSAIDESS<<<SR220TD<<<<<<98TN036623<38` → NUMERO_FORMULE `98TN036623`
-     (`MERSSAIDESS` et `SR220TD` sont la marque et le modèle : à ne pas marquer).
-   Sur une carte d'identité ou un passeport, les noms et prénoms y sont séparés par `<<` et la
-   date de naissance y figure au format `AAMMJJ` : les signaler aussi.
+   chevrons `<`, en bas d'une carte d'identité ou d'un passeport) : les données y sont
+   **collées** les unes aux autres, sans espace ni tiret. Signaler **chaque valeur incluse**,
+   avec son type, en recopiant **exactement la portion de la chaîne** qui la contient : les
+   noms et prénoms y sont séparés par `<<` et la date de naissance y figure au format `AAMMJJ`.
 7. **Texte suivi** (actes d'état civil, actes notariés, courriers) : les lignes sont coupées
    au milieu des phrases. Une valeur coupée par un retour à la ligne (date en lettres, nom
    composé, adresse) donne **un fragment par ligne avec le même `group`**, chacun recopié
