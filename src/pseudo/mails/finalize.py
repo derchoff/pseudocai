@@ -69,7 +69,8 @@ def _finalize(runtime, ws: MailWorkspace, state: dict, markers: dict[int, dict])
     names = ws.get_json("out/names.json") if ws.exists("out/names.json") else {}
     texts = [ws.get("text/body.txt").decode("utf-8")]
     texts += [ws.get(f"text/{n}.txt").decode("utf-8") for n in sorted(markers) if ws.exists(f"text/{n}.txt")]
-    classification = classify_text("\n\n".join(texts), settings, runtime.services)
+    consumption: dict = {}  # appels et jetons du classement du mail entier
+    classification = classify_text("\n\n".join(texts), settings, runtime.services, consumption)
 
     pieces = []
     reasons = list(text["reasons"])
@@ -78,7 +79,8 @@ def _finalize(runtime, ws: MailWorkspace, state: dict, markers: dict[int, dict])
         marker = markers[part["index"]]
         reasons += marker["reasons"]
         pieces.append(
-            {"fichier": part["name"], "format": part["format"], "integree": part["inline"],
+            {"index": part["index"], "mime": part.get("mime"),
+             "fichier": part["name"], "format": part["format"], "integree": part["inline"],
              "statut": marker["status"], "motifs": marker["reasons"], "rapport": _without_classification(marker.get("report", {}))}
         )
     report = {
@@ -87,6 +89,8 @@ def _finalize(runtime, ws: MailWorkspace, state: dict, markers: dict[int, dict])
         "pieces_jointes": pieces,
         "classification": classification.to_dict(),
         "mode_sortie": settings.output_mode,
+        "pieces_retirees": state.get("pieces_retirees", []),
+        "consommation": consumption,
     }
     if reasons:
         original = job_source_blob(runtime, job).download_blob().readall()

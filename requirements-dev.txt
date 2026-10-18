@@ -1,3 +1,4 @@
 -r src/requirements.txt
 -r src/requirements-images.txt
 pytest>=8.3
+openpyxl>=3.1  # scripts/statistiques.py (classeur Excel), testé

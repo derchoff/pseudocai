@@ -103,6 +103,7 @@ class Settings:
     cosmos_mapping_container: str
     cosmos_trace_container: str
     cosmos_occurrence_container: str
+    cosmos_statistics_container: str
 
     # Paramètres du pipeline
     max_pages: int
@@ -198,6 +199,7 @@ class Settings:
             cosmos_mapping_container=_env("COSMOS_MAPPING_CONTAINER", "mappings"),
             cosmos_trace_container=_env("COSMOS_TRACE_CONTAINER", "traces"),
             cosmos_occurrence_container=_env("COSMOS_OCCURRENCE_CONTAINER", "occurrences"),
+            cosmos_statistics_container=_env("COSMOS_STATISTICS_CONTAINER", "statistiques"),
             max_pages=_int("MAX_PAGES", 200),
             min_native_chars=_int("MIN_NATIVE_CHARS", 30),
             image_coverage_ocr_threshold=_float("IMAGE_COVERAGE_OCR_THRESHOLD", 0.6),

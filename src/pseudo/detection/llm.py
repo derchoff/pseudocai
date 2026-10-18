@@ -249,6 +249,8 @@ class EntityAgent:
 
         Les types hors référentiel et les identifiants de ligne inconnus sont écartés.
         """
+        stats: dict = {"appels": 0, "entites_rendues": 0, "ecartees_confiance": 0, "ligne_inconnue": 0}
+        self._local.stats = stats  # remis à zéro à chaque appel, même sans ligne à analyser
         if not lines:
             return []
         prompt = self._prompt_provider()
@@ -257,8 +259,6 @@ class EntityAgent:
         schema = entities_schema(allowed_types)
         known_ids = {line_id for line_id, _ in lines}
         entities: list[Entity] = []
-        stats: dict = {"appels": 0, "entites_rendues": 0, "ecartees_confiance": 0, "ligne_inconnue": 0}
-        self._local.stats = stats
         for n, chunk in enumerate(chunk_lines(lines, self._chunk_chars, self._overlap)):
             data, usage = self._llm.run_with_usage(prompt.text, format_lines(chunk), schema)
             stats["appels"] += 1
@@ -350,6 +350,12 @@ class ClassificationAgent:
         self._prompt_provider = prompt_provider
         self._max_chars = max_chars
         self.prompt_sha256: str | None = None
+        self._local = threading.local()  # consommation du dernier appel, propre à chaque traitement
+
+    @property
+    def last_stats(self) -> dict | None:
+        """Appels et jetons du dernier classement de ce thread."""
+        return getattr(self._local, "stats", None)
 
     def classify(self, pseudonymised_text: str) -> tuple[list[dict], DocTypeCatalog, str]:
         """Demande au modèle les types probables du document pseudonymisé.
@@ -359,12 +365,13 @@ class ClassificationAgent:
         prompt = self._prompt_provider()
         self.prompt_sha256 = prompt.sha256
         excerpt = pseudonymised_text[: self._max_chars]
-        data = self._llm.run(
-            prompt.text,
-            f"<document>\n{excerpt}\n</document>",
-            classification_schema(prompt.doctypes.types),
-            "classification",
-        )
+        self._local.stats = {"appels": 0}
+        args = (prompt.text, f"<document>\n{excerpt}\n</document>", classification_schema(prompt.doctypes.types), "classification")
+        if hasattr(self._llm, "run_with_usage"):
+            data, usage = self._llm.run_with_usage(*args)
+        else:
+            data, usage = self._llm.run(*args), {}
+        self._local.stats = {"appels": 1, **usage}
         raw = data.get("types", [])
         log.info("Classification : %s", [(t.get("type"), t.get("confidence")) for t in raw])
         return raw, prompt.doctypes, prompt.sha256

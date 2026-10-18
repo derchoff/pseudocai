@@ -89,6 +89,7 @@ class MemoryStore:
         """Listes vides de traces et de correspondances."""
         self.traces = []
         self.records = []
+        self.statistics: dict[str, dict] = {}  # fiches de statistiques par identifiant
 
     def save(self, records):
         """Ajoute les correspondances."""
@@ -106,6 +107,11 @@ class MemoryStore:
     def save_occurrences(self, document_id, items):
         """Remplace les occurrences du document."""
         self.occurrences = [o for o in getattr(self, "occurrences", []) if o["documentId"] != document_id] + items
+
+    def save_statistics(self, items):
+        """Écrit ou remplace les fiches de statistiques (même identifiant = même fiche)."""
+        for item in items:
+            self.statistics[item["id"]] = item
 
 
 def event(name: str, container: str = "incoming", host: str = "st.blob.core.windows.net") -> str:

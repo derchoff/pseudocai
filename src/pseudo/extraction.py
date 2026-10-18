@@ -175,10 +175,12 @@ def extract_document(
     image_coverage_threshold: float,
     force_ocr: bool,
     ocr_native_pages: bool = True,
+    usage: dict | None = None,
 ) -> list[PageContent]:
     """Texte positionné de toutes les pages : couche texte pour les pages natives, OCR sinon.
 
     Avec ocr_native_pages, les pages natives passent aussi à l'OCR pour lire le texte de leurs images.
+    usage : consommation du traitement, dont « pages_ocr » reçoit le nombre de pages analysées.
     """
     native: dict[int, PageContent] = {}
     scanned: list[int] = []
@@ -196,6 +198,8 @@ def extract_document(
             raise RuntimeError("OCR requis (pages scannées ou OCR_NATIVE_PAGES) mais aucun moteur configuré")
         log.info("OCR de %d page(s) dont %d scannée(s)", len(to_ocr), len(scanned))
         ocr_results = {p.index: p for p in ocr.ocr(pdf_bytes, doc, to_ocr)}
+        if usage is not None:
+            usage["pages_ocr"] = usage.get("pages_ocr", 0) + len(to_ocr)
 
     pages: list[PageContent] = []
     for idx in range(doc.page_count):

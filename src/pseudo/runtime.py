@@ -95,6 +95,7 @@ def _mapping_store(settings: Settings, cred) -> MappingStore:
         settings.cosmos_mapping_container,
         settings.cosmos_trace_container,
         settings.cosmos_occurrence_container,
+        settings.cosmos_statistics_container,
     )
 
 

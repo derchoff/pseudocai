@@ -29,6 +29,11 @@ output "containers" {
   value = local.containers
 }
 
+output "cosmos_account_name" {
+  description = "Compte Cosmos DB (scripts/statistiques.py -Cosmos)."
+  value       = azurerm_cosmosdb_account.main.name
+}
+
 output "servicebus_namespace" {
   value = azurerm_servicebus_namespace.main.name
 }

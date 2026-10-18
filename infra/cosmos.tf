@@ -66,6 +66,18 @@ resource "azurerm_cosmosdb_sql_container" "occurrences" {
   partition_key_paths = ["/documentId"]
 }
 
+# Une fiche par traitement (document, pièce de mail, JSON de métadonnées) : période de dépose,
+# catégorie et type MIME, statut, pages, tours de vérification, consommation OCR et IA. Aucune
+# donnée personnelle. Partition par jour de dépose ; conservation illimitée (pas de TTL).
+# Lu par scripts/statistiques.py (voir docs/statistiques.md).
+resource "azurerm_cosmosdb_sql_container" "statistiques" {
+  name                = "statistiques"
+  resource_group_name = local.resource_group_name
+  account_name        = azurerm_cosmosdb_account.main.name
+  database_name       = azurerm_cosmosdb_sql_database.main.name
+  partition_key_paths = ["/jour"]
+}
+
 resource "azurerm_cosmosdb_sql_role_assignment" "func" {
   resource_group_name = local.resource_group_name
   account_name        = azurerm_cosmosdb_account.main.name
@@ -91,6 +103,17 @@ resource "azurerm_cosmosdb_sql_role_assignment" "reidentification" {
   role_definition_id  = "${azurerm_cosmosdb_account.main.id}/sqlRoleDefinitions/${local.cosmos_data_reader}"
   principal_id        = each.value
   scope               = azurerm_cosmosdb_account.main.id
+}
+
+# Lecteurs des statistiques (scripts/statistiques.py) : lecture du SEUL container « statistiques »,
+# sans accès aux correspondances ni aux occurrences.
+resource "azurerm_cosmosdb_sql_role_assignment" "statistics_readers" {
+  for_each            = toset(var.statistics_reader_principal_ids)
+  resource_group_name = local.resource_group_name
+  account_name        = azurerm_cosmosdb_account.main.name
+  role_definition_id  = "${azurerm_cosmosdb_account.main.id}/sqlRoleDefinitions/${local.cosmos_data_reader}"
+  principal_id        = each.value
+  scope               = "${azurerm_cosmosdb_account.main.id}/dbs/${azurerm_cosmosdb_sql_database.main.name}/colls/${azurerm_cosmosdb_sql_container.statistiques.name}"
 }
 
 # Traçabilité RGPD : chaque requête plan de données (lecture/écriture, y compris les accès aux

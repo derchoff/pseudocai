@@ -17,7 +17,8 @@ Chaque étape qui termine un document (succès ou quarantaine) :
 - écrit ses fichiers avec les métadonnées de classification ;
 - supprime les sorties d'un traitement précédent devenues obsolètes (changement de type,
   passage de pseudonymised/ à quarantine/ ou inversement) ;
-- enregistre une trace (Cosmos DB) avec la liste des sorties écrites ;
+- enregistre une trace (Cosmos DB) avec la liste des sorties écrites, et ses fiches de
+  statistiques (statistics/) ;
 - supprime les fichiers intermédiaires de work/ et, si demandé, le document d'entrée ;
 - PUIS rattache son JSON de métadonnées de la GED s'il attend déjà dans work/json-metadata/
   (voir json_jobs.py : chaque côté écrit d'abord, vérifie ensuite).
@@ -32,13 +33,13 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Protocol
-from zoneinfo import ZoneInfo
 
 from .classification import Classification
 from .config import Settings
 from .formats import CONTENT_TYPES
 from .jobs import ORIGIN_JSON, ORIGIN_MAIL_TEXT, Job
 from .mapping_store import MappingStore
+from .statistics import record_statistics
 
 log = logging.getLogger(__name__)
 
@@ -93,10 +94,7 @@ def deposit_folder(job: Job, dossier: str, settings: Settings) -> str:
     """Dossier de sortie d'un document : year=AAAA/month=MM/day=JJ/hour=HH/domain=<dossier du type>,
     d'après sa date de dépose dans incoming/ dans le fuseau DEPOSIT_TIMEZONE. Sans dossier de type
     (classification désactivée), le niveau domain= est omis."""
-    deposited = datetime.fromisoformat(job.deposited_at or job.received_at)
-    if deposited.tzinfo is None:
-        deposited = deposited.replace(tzinfo=timezone.utc)
-    local = deposited.astimezone(ZoneInfo(settings.deposit_timezone))
+    local = job.deposited_local(settings.deposit_timezone)
     folder = f"year={local:%Y}/month={local:%m}/day={local:%d}/hour={local:%H}"
     return f"{folder}/domain={dossier}" if dossier else folder
 
@@ -279,6 +277,7 @@ def _finish(
             "report": report,
         }
     )
+    record_statistics(ctx, job, status, report, classification)
     delete_work_files(ctx, job)
     if ctx.settings.delete_source_after_success:
         _delete_blob(source_blob(ctx, job.source_container, job.source_name))

@@ -39,6 +39,7 @@ from .spans import (
     render_text,
     resolve_entities,
 )
+from .statistics.usage import add_agent, agent_usage, empty_consumption
 
 log = logging.getLogger(__name__)
 
@@ -144,6 +145,8 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
     report: dict = {"pipeline_version": "0.2.0"}
     if source.source:
         report["source"] = source.source
+    # Consommation des services facturés (OCR, agents IA, Language), même en cas de quarantaine.
+    consumption = report["consommation"] = empty_consumption()
     reasons: list[str] = []
     # Rapport détaillé (REPORT_DETAIL=diagnostic) : ce que chaque étape a fait, jamais les valeurs.
     diag: dict | None = None
@@ -169,6 +172,7 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
         report["champs"] = list(catalog.types)
     step = time.monotonic()
     entities = services.detector.detect(lines)
+    consumption["ia"]["detection"] = agent_usage(services.detector)
     llm_seconds = time.monotonic() - step
     located: list[dict] | None = [] if diag is not None else None
     spans, unresolved = resolve_entities(entities, content, settings.fuzzy_min_score, located)
@@ -179,6 +183,9 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
     if services.language is not None:
         language_started = time.monotonic()
         language_spans = services.language.detect(lines)
+        language_stats = getattr(services.language, "last_stats", None) or {}
+        for key in ("enregistrements", "caracteres"):
+            consumption["language"][key] += int(language_stats.get(key, 0) or 0)
         language_seconds = time.monotonic() - language_started
         spans += language_spans
     before_merge = len(spans)
@@ -217,6 +224,7 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
             round_started = time.monotonic()
             pseudo_lines = pseudonymise_document(content, spans)
             residual_entities = services.verifier.verify([(pl.id, pl.text) for pl in pseudo_lines])
+            add_agent(consumption["ia"]["verification"], agent_usage(services.verifier))
             verifier_seconds = time.monotonic() - round_started
             residual_located: list[dict] | None = [] if diag is not None else None
             residual_spans, residual_unresolved = _residuals_to_original(
@@ -264,7 +272,7 @@ def run_pipeline(source: PipelineInput | bytes, settings: Settings, services: Se
     # 5. Classification du type de document (sur le texte pseudonymisé) ----------------------
     step = time.monotonic()
     if source.classify:
-        classification = classify_text(text, settings, services)
+        classification = classify_text(text, settings, services, consumption)
     else:
         classification = unclassified(STATUT_NON_APPLICABLE, settings.unclassified_folder)
     report["classification"] = classification.to_dict()
@@ -349,6 +357,7 @@ def _open_and_extract(
         image_coverage_threshold=settings.image_coverage_ocr_threshold,
         force_ocr=settings.force_ocr or source.force_ocr,
         ocr_native_pages=settings.ocr_native_pages,
+        usage=report.get("consommation"),
     )
     doc.close()
     content = DocumentContent(pages=pages)
@@ -544,10 +553,13 @@ def _rejected(reason: str, report: dict, settings: Settings) -> PipelineResult:
     return PipelineResult(status="quarantine", reasons=[reason], report=report, classification=classification)
 
 
-def classify_text(text: str, settings: Settings, services: Services) -> Classification:
+def classify_text(
+    text: str, settings: Settings, services: Services, consumption: dict | None = None
+) -> Classification:
     """Classe le texte pseudonymisé ; une erreur de l'agent range le document en « non classé ».
 
-    Un référentiel invalide lève l'erreur, pour que le message soit réessayé.
+    Un référentiel invalide lève l'erreur, pour que le message soit réessayé. consumption : si donné,
+    reçoit les appels et jetons de l'agent de classification (clé ia.classification).
     """
     if not settings.classification_enabled or services.classifier is None:
         return unclassified(STATUT_DESACTIVEE, settings.unclassified_folder)
@@ -558,6 +570,9 @@ def classify_text(text: str, settings: Settings, services: Services) -> Classifi
     except Exception:  # noqa: BLE001 - une classification ratée ne doit pas bloquer la pseudonymisation
         log.exception("Classification en échec : document rangé dans « %s »", settings.unclassified_folder)
         return unclassified(STATUT_ERREUR, settings.unclassified_folder, services.classifier.prompt_sha256)
+    finally:
+        if consumption is not None:
+            consumption.setdefault("ia", {})["classification"] = agent_usage(services.classifier)
     return decide(
         raw,
         doctypes,

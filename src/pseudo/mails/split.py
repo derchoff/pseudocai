@@ -20,7 +20,7 @@ import logging
 import posixpath
 import uuid
 
-from ..formats import PDF, is_image
+from ..formats import CONTENT_TYPES, PDF, is_image
 from ..image_codec import image_size, is_gif, sniff_size
 from ..jobs import ORIGIN_IMAGE, ORIGIN_MAIL_TEXT, ORIGIN_PDF, Job
 from ..outputs import job_source_blob, previous_trace
@@ -52,11 +52,17 @@ def handle_mail_job(body: bytes | str, runtime) -> list[tuple[str, str]]:
         quarantine_mail(runtime, job, original, mail_folder(job), ["mail_illisible"], {}, None, previous)
         return []
     folder = mail_folder(job)
-    removed = _drop_unusable_images(mail, settings)
+    removed, removed_detail = _drop_unusable_images(mail, settings)
     refused = _refusals(mail, settings)
     if refused:
         reasons, detail = refused
-        quarantine_mail(runtime, job, original, folder, reasons, {"pieces_refusees": detail}, None, previous)
+        refused_parts = {d.get("piece") for d in detail}
+        not_processed = [
+            {"index": a.index, "format": a.fmt, "mime": attachment_mime(a)}
+            for a in mail.attachments if a.index not in refused_parts
+        ]
+        report = {"pieces_refusees": detail, "pieces_non_traitees": not_processed, "pieces_retirees": removed_detail}
+        quarantine_mail(runtime, job, original, folder, reasons, report, None, previous)
         return []
 
     ws = MailWorkspace.for_job(runtime, job.job_id)
@@ -67,7 +73,7 @@ def handle_mail_job(body: bytes | str, runtime) -> list[tuple[str, str]]:
         source_name = ws.put(f"in/{attachment.index}{ext.lower()}", attachment.data)
         part_document_id = f"{job.document_id}-{attachment.index:02d}"
         parts.append({
-            "index": attachment.index, "format": attachment.fmt,
+            "index": attachment.index, "format": attachment.fmt, "mime": attachment_mime(attachment),
             "inline": attachment.content_id is not None, "document_id": part_document_id,
         })
         child = Job(
@@ -77,7 +83,10 @@ def handle_mail_job(body: bytes | str, runtime) -> list[tuple[str, str]]:
         )
         children.append((QUEUE_PDF if origin == ORIGIN_PDF else QUEUE_IMAGE, child.to_json()))
     # État écrit AVANT l'envoi des tâches : chacune le relit.
-    ws.put_json("state.json", {"job": job.to_json(), "folder": folder, "parts": parts, "images_retirees": removed})
+    ws.put_json("state.json", {
+        "job": job.to_json(), "folder": folder, "parts": parts, "images_retirees": removed,
+        "pieces_retirees": removed_detail,
+    })
     text_job = Job(
         job_id=str(uuid.uuid4()), document_id=f"{job.document_id}-texte", source_container=job.source_container,
         source_name=job.source_name, source_format=job.source_format, origin=ORIGIN_MAIL_TEXT,
@@ -94,9 +103,16 @@ def mail_folder(job: Job) -> str:
     return posixpath.splitext(job.source_name)[0]
 
 
-def _drop_unusable_images(mail: ParsedMail, settings) -> dict[str, int]:
+def attachment_mime(attachment) -> str:
+    """Type MIME d'une pièce : celui de son format reconnu (un PDF envoyé en octet-stream reste un
+    PDF), sinon le type déclaré dans le mail."""
+    return CONTENT_TYPES.get(attachment.fmt) or attachment.content_type or "application/octet-stream"
+
+
+def _drop_unusable_images(mail: ParsedMail, settings) -> tuple[dict[str, int], list[dict]]:
     """Retire les images d'un mail inutiles ou illisibles par l'OCR : elles ne sont ni traitées ni
-    publiées, et leur référence disparaît du HTML. Renvoie leur nombre par raison :
+    publiées, et leur référence disparaît du HTML. Renvoie leur nombre par raison, et le détail de
+    chacune pour les statistiques (numéro, type MIME, raison ; jamais le nom) :
 
     - gif : toute image GIF (nom, type MIME ou contenu), que l'OCR ne lit pas ;
     - trop_petites : toute image de moins de MAIL_IMAGE_MIN_SIDE pixels sur un côté, quels que soient
@@ -105,29 +121,35 @@ def _drop_unusable_images(mail: ParsedMail, settings) -> dict[str, int]:
     """
     kept: list = []
     removed = {"gif": 0, "trop_petites": 0, "integrees_illisibles": 0}
+    detail: list[dict] = []
     for a in mail.attachments:
+        reason = None
         if a.filename.lower().endswith(".gif") or a.content_type == "image/gif" or is_gif(a.data):
-            removed["gif"] += 1
+            reason = "gif"
+        else:
+            size = image_size(a.data, a.fmt) if is_image(a.fmt) else sniff_size(a.data)
+            if size is not None and min(size) < settings.mail_image_min_side:
+                reason = "trop_petites"
+            elif size is not None and a.content_id and is_image(a.fmt) and min(size) < settings.image_min_short_side:
+                reason = "integrees_illisibles"
+        if reason is None:
+            kept.append(a)
             continue
-        size = image_size(a.data, a.fmt) if is_image(a.fmt) else sniff_size(a.data)
-        if size is not None and min(size) < settings.mail_image_min_side:
-            removed["trop_petites"] += 1
-            continue
-        if size is not None and a.content_id and is_image(a.fmt) and min(size) < settings.image_min_short_side:
-            removed["integrees_illisibles"] += 1
-            continue
-        kept.append(a)
+        removed[reason] += 1
+        mime = "image/gif" if reason == "gif" else attachment_mime(a)
+        detail.append({"index": a.index, "mime": mime if mime.startswith("image/") else "image/inconnu", "motif": reason})
     mail.attachments = kept
-    return removed
+    return removed, detail
 
 
 def _refusals(mail: ParsedMail, settings) -> tuple[list[str], list[dict]] | None:
     """Motifs de quarantaine immédiate du mail entier, et détail (extensions seulement : un nom de
     fichier peut contenir un nom de personne)."""
     reasons, detail = [], []
-    for name in mail.unsupported:
+    for n, name in enumerate(mail.unsupported, start=1):
         reasons.append("piece_jointe_non_prise_en_charge")
-        detail.append({"piece": None, "extension": posixpath.splitext(name)[1].lower(), "motif": "mail_joint"})
+        detail.append({"piece": f"joint-{n}", "extension": posixpath.splitext(name)[1].lower(),
+                       "mime": "message/rfc822", "motif": "mail_joint"})
     for a in mail.attachments:
         ext = posixpath.splitext(a.filename)[1].lower()
         motif = None
@@ -137,7 +159,7 @@ def _refusals(mail: ParsedMail, settings) -> tuple[list[str], list[dict]] | None
             motif = "traitement_images_desactive"
         if motif:
             reasons.append("piece_jointe_non_prise_en_charge")
-            detail.append({"piece": a.index, "extension": ext, "motif": motif})
+            detail.append({"piece": a.index, "extension": ext, "mime": attachment_mime(a), "motif": motif})
     if len(mail.attachments) > settings.mail_max_attachments:
         reasons.append("trop_de_pieces_jointes")
         detail.append({"pieces": len(mail.attachments), "maximum": settings.mail_max_attachments})

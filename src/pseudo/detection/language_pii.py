@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import threading
 
 from ..models import Line, Span
+from ..statistics.usage import language_records
 
 log = logging.getLogger(__name__)
 
@@ -31,10 +33,18 @@ class LanguagePiiDetector:
         self._map = category_map
         self._min_conf = min_confidence
         self._language = language
+        self._local = threading.local()  # volume envoyé lors du dernier appel, propre à chaque traitement
+
+    @property
+    def last_stats(self) -> dict | None:
+        """Volume du dernier appel de ce thread : enregistrements facturés et caractères envoyés."""
+        return getattr(self._local, "stats", None)
 
     def detect(self, lines: list[Line]) -> list[Span]:
         """Envoie les lignes par blocs à Azure AI Language et renvoie les zones détectées, ligne par ligne."""
         chunks = self._chunk(lines)
+        texts = [text for text, _ in chunks]
+        self._local.stats = {"enregistrements": language_records(texts), "caracteres": sum(len(t) for t in texts)}
         spans: list[Span] = []
         for i in range(0, len(chunks), MAX_DOCS_PER_CALL):
             batch = chunks[i:i + MAX_DOCS_PER_CALL]

@@ -448,3 +448,12 @@ données et sa règle de purge, puis recrée la rubrique Event Grid sur le nouve
 | Nouvelle variable `deposit_timezone` (`Europe/Paris` par défaut), réglage `DEPOSIT_TIMEZONE` | Rien à faire, sauf pour un autre fuseau (`"UTC"`…). Nouvelle dépendance Python `tzdata` (installée par le déploiement). |
 | Un job en cours au moment du déploiement (créé par l'ancienne version) | Il n'a pas de date de dépose : l'heure de son routage la remplace. |
 
+## Mise à jour : statistiques Cosmos DB
+
+| Changement | Action |
+|---|---|
+| Nouveau container Cosmos DB `statistiques` (partition `/jour`, sans expiration), réglage `COSMOS_STATISTICS_CONTAINER` | Créé par Terraform, puis redéployer le code (`deploy.ps1`). Les fiches commencent au déploiement : les traitements antérieurs n'en ont pas. |
+| Rapport de chaque document : nouvelle section `consommation` (pages OCR, appels et jetons des agents IA, Azure AI Language) | Rien à faire. |
+| Nouvelle variable `statistics_reader_principal_ids` | Object IDs Entra autorisés à lire le container `statistiques` (et lui seul) avec `scripts/statistiques.py`. Voir [statistiques](statistiques.md). |
+| Nouvelle sortie Terraform `cosmos_account_name` | Nom du compte à passer à `scripts/statistiques.py --cosmos`. |
+

@@ -518,6 +518,7 @@ noms étant limitées, deux personnes différentes peuvent recevoir le même fau
 | `handler.py` | Étape ③ : chargement du job, pipeline, publication | app principale |
 | `pipeline.py` | Pipeline de pseudonymisation, indépendant du format (`PipelineInput`) | ③, CLI |
 | `outputs.py` | Écriture des sorties et de la quarantaine, métadonnées, traces, nettoyages | ①②③ |
+| `statistics/` (`statistics.py`, `usage.py`) | Fiches de statistiques (Cosmos DB `statistiques`) et consommation de chaque traitement ; voir [statistiques](statistiques.md) | ①②③ |
 | `extraction.py`, `spans.py`, `redaction.py`, `detection/`, `pseudonymizer.py`, `classification.py`… | Cœur du traitement (PDF) | ③ |
 
 Les deux Function Apps sont déployées **à partir du même code source**. L'app images utilise
@@ -548,7 +549,7 @@ dépendances de `requirements-images.txt` (OpenCV, NumPy). L'app principale n'in
 | Ré-identification | Valeur chiffrée **AES-256-GCM** dans Cosmos DB (`mappings`) + emplacement de chaque remplacement (`occurrences`) | Table séparée des documents, accès restreint et tracé (audit Key Vault). Retour à l'original par document et position, sans rien cacher dans les fichiers publiés. |
 | Doute | **Quarantaine** plutôt que publication | Un faux négatif (fuite) coûte bien plus cher qu'un traitement manuel. |
 | Type de document | **Agent LLM de classification** piloté par `types-documents.md`, appliqué au texte **pseudonymisé** | Minimisation RGPD. Un type s'ajoute sans redéployer. |
-| Rangement | Sous-dossier par type dans `pseudonymised/` **et** `quarantine/`, métadonnées de blob, classification dans le rapport et la trace | Consultation par dossier, filtrage par programme, statistiques via Cosmos DB. |
+| Rangement | Sous-dossier par type dans `pseudonymised/` **et** `quarantine/`, métadonnées de blob, classification dans le rapport et la trace | Consultation par dossier, filtrage par programme, statistiques via Cosmos DB (container `statistiques`, voir [statistiques](statistiques.md)). |
 | Prompts | Stockés dans un Blob versionné, rechargés à chaud (ETag) | Un expert métier peut les faire évoluer sans redéployer. |
 | Résidence | OpenAI en **DataZoneStandard** (UE), autres services en France Central | Conformité RGPD. |
 

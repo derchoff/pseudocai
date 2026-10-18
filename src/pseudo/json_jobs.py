@@ -38,6 +38,7 @@ from .jobs import ORIGIN_JSON, Job
 from .json_metadata import JsonMetadataError, pseudonymise_json
 from .json_rules import JsonRules
 from .outputs import StorageContext, _json, job_source_blob, source_blob
+from .statistics import record_statistics
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +72,9 @@ def handle_json_job(job: Job, runtime) -> str:
     else:
         work.upload_blob(f"{base}.motif.json", _json({"motifs": reasons, "rapport": report}), overwrite=True)
         _delete(work, f"{base}.json")
-    log.info("JSON de métadonnées pseudonymisé doc=%s statut=%s", job.document_id, "ok" if result and result.status == "ok" else "quarantine")
+    status = "ok" if result is not None and result.status == "ok" else "quarantine"
+    record_statistics(runtime, job, status, {**report, "motifs": reasons}, None)
+    log.info("JSON de métadonnées pseudonymisé doc=%s statut=%s", job.document_id, status)
     document_name = job.source_name[: -len(JSON_SUFFIX)]
     return attach_json_metadata(runtime, job.document_id, job.source_container, document_name) or "en_attente"
 

@@ -34,6 +34,8 @@ locals {
     COSMOS_TRACE_CONTAINER   = azurerm_cosmosdb_sql_container.traces.name
     # Écrit par l'étape de pseudonymisation (app principale) uniquement.
     COSMOS_OCCURRENCE_CONTAINER = azurerm_cosmosdb_sql_container.occurrences.name
+    # Fiches de statistiques : écrites par les deux apps (quarantaine à la préparation des images).
+    COSMOS_STATISTICS_CONTAINER = azurerm_cosmosdb_sql_container.statistiques.name
   }
 }
 

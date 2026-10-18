@@ -71,3 +71,6 @@ pipeline_settings = {
 tags = {
   owner = "equipe-data"
 }
+
+# Statistiques (docs/statistiques.md) : Object IDs Entra autorisés à lire le container « statistiques »
+statistics_reader_principal_ids = []

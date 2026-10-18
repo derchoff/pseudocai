@@ -37,6 +37,10 @@ class MappingStore(Protocol):
         """Remplace les occurrences (zones remplacées) d'un document publié."""
         ...
 
+    def save_statistics(self, items: list[dict]) -> None:
+        """Écrit (ou remplace) les fiches de statistiques d'un traitement (voir statistics.py)."""
+        ...
+
 
 class NullMappingStore:
     """Stockage qui n'enregistre rien (exécution locale sans persistance)."""
@@ -54,6 +58,10 @@ class NullMappingStore:
         return None
 
     def save_occurrences(self, document_id: str, items: list[dict]) -> None:
+        """Ne fait rien."""
+        pass
+
+    def save_statistics(self, items: list[dict]) -> None:
         """Ne fait rien."""
         pass
 
@@ -87,15 +95,27 @@ class JsonFileMappingStore:
         """Les occurrences ne sont pas conservées en local."""
         pass
 
+    def save_statistics(self, items: list[dict]) -> None:
+        """Les statistiques ne sont pas conservées en local."""
+        pass
+
 
 class CosmosMappingStore:
-    """Stockage Cosmos DB : containers mappings, traces et occurrences."""
+    """Stockage Cosmos DB : containers mappings, traces, occurrences et statistiques."""
 
-    def __init__(self, database_client, mapping_container: str, trace_container: str, occurrence_container: str):
-        """database_client : base Cosmos DB ; les noms désignent ses trois containers."""
+    def __init__(
+        self,
+        database_client,
+        mapping_container: str,
+        trace_container: str,
+        occurrence_container: str,
+        statistics_container: str = "statistiques",
+    ):
+        """database_client : base Cosmos DB ; les noms désignent ses quatre containers."""
         self._mappings = database_client.get_container_client(mapping_container)
         self._traces = database_client.get_container_client(trace_container)
         self._occurrences = database_client.get_container_client(occurrence_container)
+        self._statistics = database_client.get_container_client(statistics_container)
 
     def save(self, records: list[MappingRecord]) -> None:
         """Crée les correspondances absentes ; lève TokenCollisionError si un jeton existe pour une autre valeur."""
@@ -143,3 +163,8 @@ class CosmosMappingStore:
             self._occurrences.delete_item(item=item["id"], partition_key=document_id)
         for item in items:
             self._occurrences.upsert_item(item)
+
+    def save_statistics(self, items: list[dict]) -> None:
+        """Écrit (ou remplace) les fiches de statistiques : même identifiant = même fiche."""
+        for item in items:
+            self._statistics.upsert_item(item)

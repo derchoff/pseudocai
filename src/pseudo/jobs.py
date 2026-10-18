@@ -17,6 +17,7 @@ import json
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 ORIGIN_PDF = "pdf"
 ORIGIN_IMAGE = "image"
@@ -86,6 +87,14 @@ class Job:
         data = json.loads(body)
         prepared = data.pop("prepared", None)
         return cls(**data, prepared=PreparedImage(**prepared) if prepared else None)
+
+    def deposited_local(self, timezone_name: str) -> datetime:
+        """Date et heure de dépose dans incoming/, dans le fuseau donné (Europe/Paris…) ; heure de
+        routage pour un job créé par une version précédente."""
+        deposited = datetime.fromisoformat(self.deposited_at or self.received_at)
+        if deposited.tzinfo is None:
+            deposited = deposited.replace(tzinfo=timezone.utc)
+        return deposited.astimezone(ZoneInfo(timezone_name))
 
     @property
     def work_prefix(self) -> str:

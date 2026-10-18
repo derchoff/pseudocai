@@ -52,12 +52,12 @@ incoming/ ─► Event Grid ─► [incoming-events] ─► ① Routage (Functio
 
 | Dossier | Contenu |
 |---|---|
-| [docs/](docs/) | [Architecture](docs/architecture.md) (diagrammes Mermaid), [déploiement](docs/deploiement.md) (dont l'[inventaire des ressources Azure](docs/deploiement.md#ressources-déployées)), [exploitation](docs/exploitation.md), [prompts](docs/prompts.md), [copie d'un échantillon de documents](docs/echantillonnage.md) |
+| [docs/](docs/) | [Architecture](docs/architecture.md) (diagrammes Mermaid), [déploiement](docs/deploiement.md) (dont l'[inventaire des ressources Azure](docs/deploiement.md#ressources-déployées)), [exploitation](docs/exploitation.md), [statistiques](docs/statistiques.md) (pages, quarantaine, types MIME, tours de vérification, coût par page), [prompts](docs/prompts.md), [copie d'un échantillon de documents](docs/echantillonnage.md) |
 | [prompts/](prompts/) | Référentiels des champs et des types de document, prompts des trois agents IA |
 | [infra/](infra/) | Terraform (azurerm 5.x), module `flex_function` partagé par les deux Function Apps |
 | [src/](src/) | `function_app.py` (point d'entrée des deux apps, choisi par `FUNCTION_APP_ROLE`), `functions_main.py` (routage + pseudonymisation), `functions_images.py` (préparation des images), package `pseudo`, outils `cli.py` / `reidentify.py` |
 | [tests/](tests/) | Tests unitaires et de bout en bout (sans appel Azure) |
-| [scripts/](scripts/) | Déploiement PowerShell, dépôt de tests, échantillonnage, extraction des pièces jointes d'un `.eml` (voir [exploitation](docs/exploitation.md#dépôt)) |
+| [scripts/](scripts/) | Déploiement PowerShell, dépôt de tests, échantillonnage, extraction des pièces jointes d'un `.eml`, statistiques Cosmos DB à l'écran et en Excel (voir [exploitation](docs/exploitation.md#dépôt)) |
 | [exemples/](exemples/) | Factures fictives (dentiste, opticien, psychologue, kiné), photos et scans fictifs, et leurs générateurs |
 
 ## Démarrage rapide

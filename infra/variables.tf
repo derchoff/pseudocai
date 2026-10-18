@@ -321,6 +321,12 @@ variable "reidentification_principal_ids" {
   default     = []
 }
 
+variable "statistics_reader_principal_ids" {
+  description = "Object IDs Entra (utilisateurs ou groupe) autorisés à lire le container Cosmos DB « statistiques » (scripts/statistiques.py), et lui seul."
+  type        = list(string)
+  default     = []
+}
+
 variable "log_retention_days" {
   description = "Rétention Log Analytics."
   type        = number
