@@ -8,6 +8,7 @@ Chaque traitement écrit une **fiche** dans le container Cosmos DB `statistiques
 - le **pourcentage de mise en quarantaine** ;
 - la répartition **par type** de document et par **type MIME** ;
 - les **tours de vérification** ;
+- le **délai de bout en bout** : de la dépose dans `incoming/` à la fin du traitement ;
 - la **consommation** (OCR, agents IA, Azure AI Language) et, avec les prix, le **coût par page**.
 
 Le script affiche ces tableaux à l'écran et les écrit dans un classeur Excel.
@@ -109,7 +110,13 @@ Statistiques d'octobre 2026, par jour, avec un classeur Excel :
 uv run --python 3.12 --with azure-cosmos --with azure-identity --with openpyxl python scripts/statistiques.py --cosmos cosmos-pseudo-dev-ab12 --debut 2026-10-01 --fin 2026-10-31
 ```
 
-Même période, regroupée par mois, avec les prix pour estimer le coût par page :
+Dépôts du 18 octobre 2026 entre 9 h et 12 h 59, heure par heure :
+
+```bash
+uv run --python 3.12 --with azure-cosmos --with azure-identity --with openpyxl python scripts/statistiques.py --cosmos cosmos-pseudo-dev-ab12 --debut 2026-10-18 --fin 2026-10-18 --heure-debut 9 --heure-fin 12 --par heure
+```
+
+Toute l'année 2026, regroupée par mois, avec les prix pour estimer le coût par page :
 
 ```bash
 uv run --python 3.12 --with azure-cosmos --with azure-identity --with openpyxl python scripts/statistiques.py --cosmos cosmos-pseudo-dev-ab12 --debut 2026-01-01 --fin 2026-12-31 --par mois --prix-ocr 1.5 --prix-entree 0.25 --prix-sortie 2 --prix-language 1 --excel echantillon/statistiques-2026.xlsx
@@ -123,8 +130,9 @@ Azure (Document Intelligence « Read », modèle Azure OpenAI déployé, Azure A
 | `--cosmos` | (obligatoire) | Compte Cosmos DB : nom (`cosmos-pseudo-dev-ab12`) ou URL `https://….documents.azure.com:443/`. |
 | `--fiches` | | À la place de `--cosmos` : export JSON des fiches (une liste), pour travailler hors connexion. |
 | `--base`, `--container` | `pseudonymisation`, `statistiques` | Base et container Cosmos DB. |
-| `--debut`, `--fin` | 1er du mois, aujourd'hui | Jours de **dépose** (AAAA-MM-JJ), bornes comprises. |
-| `--par` | `jour` | Regroupement des tableaux : `jour`, `mois` ou `annee`. |
+| `--debut`, `--fin` | 1er du mois, aujourd'hui | Jours de **dépose** (AAAA-MM-JJ), bornes comprises. Sans `--fin`, la période va jusqu'à **aujourd'hui** : pour un seul jour, donner la même date aux deux. |
+| `--heure-debut`, `--heure-fin` | 0, 23 | Heures de dépose (0 à 23, heure de Paris), comprises : la période commence le jour `--debut` à `--heure-debut` h et finit le jour `--fin` à `--heure-fin` h 59. |
+| `--par` | `jour` | Regroupement des tableaux : `heure`, `jour`, `mois` ou `annee`. |
 | `--excel` | `statistiques_<debut>_<fin>.xlsx` | Classeur produit. |
 | `--sans-excel` | | Affichage à l'écran seulement. |
 | `--prix-ocr` | 0 | Prix de 1 000 pages Document Intelligence. |
@@ -139,14 +147,21 @@ L'écran affiche les cinq premiers tableaux. Le classeur Excel les contient tous
 
 | Onglet | Contenu |
 |---|---|
-| **Synthèse** | Documents déposés (un mail compte pour un), dont mails ; publiés, en quarantaine, **% de quarantaine** ; documents traités plus d'une fois ; pièces de mails traitées, en quarantaine, refusées, images retirées ; JSON ; **pages traitées**, pages par document (moyenne, médiane, maximum) ; **pages passées par l'OCR**, **pages passées par les agents IA**, textes passés par l'IA (corps de mail, JSON) ; appels et jetons IA ; enregistrements Language ; **coût estimé** et **coût par page traitée**. |
-| **Par période** | Par jour, mois ou année : documents, mails, quarantaine (nombre et %), pages, pages OCR, pages IA, jetons, coût et coût par page. |
-| **Par type** | Par catégorie et type MIME : nombre, publiés, en quarantaine, refusés, retirés, non traités, % de quarantaine, pages, pages OCR, pages IA, jetons, coût. Les pièces de mails y sont détaillées (PDF, images, autres) : on y lit combien de pages de pièces jointes sont réellement passées par l'OCR et par l'IA. |
+| **Synthèse** | Documents déposés (un mail compte pour un), dont mails ; publiés, en quarantaine, **% de quarantaine** ; documents traités plus d'une fois ; pièces de mails traitées, en quarantaine, refusées, images retirées ; JSON ; **pages traitées**, pages par document (moyenne, médiane, maximum) ; **pages passées par l'OCR**, **pages passées par les agents IA**, textes passés par l'IA (corps de mail, JSON) ; appels et jetons IA ; enregistrements Language ; **délai de bout en bout** (moyenne, médiane, 95e centile, maximum) ; **coût estimé** et **coût par page traitée**. |
+| **Par période** | Par jour, mois ou année : documents, mails, quarantaine (nombre et %), délai moyen et 95e centile, pages, pages OCR, pages IA, jetons, coût et coût par page. |
+| **Par type** | Par catégorie et type MIME : nombre, publiés, en quarantaine, refusés, retirés, non traités, % de quarantaine, délai moyen et 95e centile (documents déposés et JSON ; pas les pièces, livrées avec leur mail), pages, pages OCR, pages IA, jetons, coût. Les pièces de mails y sont détaillées (PDF, images, autres) : on y lit combien de pages de pièces jointes sont réellement passées par l'OCR et par l'IA. |
 | **Tours de vérification** | Par période, sur les textes vérifiés (documents, textes de mails, pièces, JSON) : nombre à 1, 2, 3, 4 tours et plus, moyenne, maximum, **résidus après le dernier tour** (nombre et %). |
 | **Agents IA** | Appels et jetons de la détection, de la vérification et de la classification, avec leur coût. |
-| **Documents** (Excel seulement) | Une ligne par document déposé : jour, heure, empreinte, catégorie, type MIME, statut, motifs, domaine, pages (pièces comprises), nombre de pièces, tours, pages OCR, pages IA, appels et jetons (pièces et JSON compris), coût. |
+| **Documents** (Excel seulement) | Une ligne par document déposé : jour, heure, empreinte, catégorie, type MIME, statut, motifs, domaine, pages (pièces comprises), nombre de pièces, tours, délai de bout en bout, pages OCR, pages IA, appels et jetons (pièces et JSON compris), coût. |
 
 Définitions :
+- **Délai de bout en bout** : temps réel entre la dépose du fichier dans `incoming/` (`deposeLe`) et
+  la fin de son traitement, publication ou quarantaine (`traiteLe`). Il comprend l'attente dans les
+  files Service Bus, les nouveaux essais (429, erreurs passagères) et, pour un mail, le traitement
+  de toutes ses pièces : sa fiche est écrite à la finalisation. Il est calculé sur les documents
+  terminés (publiés ou en quarantaine). Le **95e centile** est le délai que 95 % des documents ne
+  dépassent pas : il montre les cas lents sans être écrasé par un seul document exceptionnel. Ce
+  n'est pas un temps de calcul : plusieurs documents sont traités en même temps.
 - **Pages passées par l'OCR** : pages envoyées à Document Intelligence (facturées), pièces de mails comprises.
 - **Pages passées par les agents IA** : pages dont le texte a été envoyé à l'agent de détection (puis au vérificateur), pièces de mails comprises. Une page peut passer par l'IA sans OCR (PDF natif avec `OCR_NATIVE_PAGES=false`) ou par l'OCR sans IA (écriture manuscrite détectée).
 - **% de quarantaine** : documents en quarantaine / documents terminés (publiés + quarantaine), un mail comptant pour un.

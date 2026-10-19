@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
 from openpyxl import load_workbook
 
 from fakes import FakeBlobService, MemoryStore, event, run_chain
@@ -81,3 +82,68 @@ def test_main_prints_and_writes_the_workbook(settings, tmp_path, capsys):
 def test_cosmos_account_name_or_url():
     assert statistiques.cosmos_endpoint("cosmos-pseudo-dev-ab12") == "https://cosmos-pseudo-dev-ab12.documents.azure.com:443/"
     assert statistiques.cosmos_endpoint("https://x.documents.azure.com:443/") == "https://x.documents.azure.com:443/"
+
+
+def _row(jour, depose, traite, categorie="pdf", niveau="document", statut="ok", job="j", **extra):
+    """Fiche minimale pour les calculs de délai."""
+    return {"id": job, "jobId": job, "documentId": job, "jour": jour, "hour": 10, "niveau": niveau,
+            "categorie": categorie, "mime": "application/pdf", "statut": statut, "pages": 1,
+            "deposeLe": depose, "traiteLe": traite, **extra}
+
+
+def test_end_to_end_delay():
+    rows = [
+        _row("2026-10-18", "2026-10-18T08:00:00+00:00", "2026-10-18T08:00:30+00:00", job="a"),           # 30 s
+        _row("2026-10-18", "2026-10-18T08:00:00+00:00", "2026-10-18T08:01:30+00:00", job="b",
+             statut="quarantine"),                                                                         # 90 s
+        _row("2026-10-18", "2026-10-18T08:00:00+00:00", "2026-10-18T08:10:00+00:00", job="m", categorie="mail"),  # 600 s
+        # Pièce du mail, terminée avant lui : son délai ne compte pas à part.
+        _row("2026-10-18", "2026-10-18T08:00:00+00:00", "2026-10-18T08:05:00+00:00", job="m-p1",
+             categorie="pdf_mail", niveau="piece", mailJobId="m"),
+        # Date de fin illisible : document compté, délai inconnu.
+        _row("2026-10-19", "2026-10-19T08:00:00+00:00", "bad", job="z"),
+    ]
+    tables = statistiques.compute(rows, "jour", {"ocr": 0, "entree": 0, "sortie": 0, "language": 0})
+    summary = {k: v["Valeur"] for k, v in table(tables, "Synthèse").items()}
+    assert summary["Délai de bout en bout, moyenne (s)"] == 240.0  # (30 + 90 + 600) / 3 ; date illisible ignorée
+    assert summary["Délai de bout en bout, médiane (s)"] == 90.0
+    assert summary["Délai de bout en bout, maximum (s)"] == 600.0
+    assert 90 < summary["Délai de bout en bout, 95e centile (s)"] <= 600
+    period = table(tables, "Par période")["2026-10-18"]
+    assert period["Délai moyen (s)"] == 240.0
+    by_type = {(r[0], r[1]): dict(zip(tables["Par type"][0], r)) for r in tables["Par type"][1]}
+    assert by_type[("PDF hors mail", "application/pdf")]["Délai moyen (s)"] == 60.0
+    assert by_type[("PDF dans un mail", "application/pdf")]["Délai moyen (s)"] is None  # livré avec le mail
+    docs = {r[2]: dict(zip(tables["Documents"][0], r)) for r in tables["Documents"][1]}
+    assert docs["m"]["Délai (s)"] == 600.0 and docs["z"]["Délai (s)"] is None
+
+
+def test_delay_of_a_single_document_and_of_none():
+    assert statistiques.delay_summary([12.0])["p95"] == 12.0
+    assert statistiques.delay_summary([None])["moyenne"] is None
+
+
+def test_hours_narrow_the_period_and_group_by_hour(tmp_path, capsys):
+    rows = [
+        _row("2026-10-18", "2026-10-18T06:00:00+00:00", "2026-10-18T06:00:10+00:00", job=f"h{h}", hour=h)
+        for h in (8, 9, 12, 13)
+    ] + [_row("2026-10-19", "2026-10-19T06:00:00+00:00", "2026-10-19T06:00:10+00:00", job="next", hour=9)]
+    assert {r["jobId"] for r in statistiques.in_hours(rows, "2026-10-18", 9, "2026-10-18", 12)} == {"h9", "h12"}
+    assert {r["jobId"] for r in statistiques.in_hours(rows, "2026-10-18", 13, "2026-10-19", 9)} == {"h13", "next"}
+    export = tmp_path / "fiches.json"
+    export.write_text(json.dumps(rows), encoding="utf-8")
+    excel = tmp_path / "stats.xlsx"
+    statistiques.main(["--fiches", str(export), "--debut", "2026-10-18", "--fin", "2026-10-18",
+                       "--heure-debut", "9", "--heure-fin", "12", "--par", "heure", "--excel", str(excel)])
+    out = capsys.readouterr().out
+    assert "2026-10-18 09h au 2026-10-18 12h (2 fiche(s)" in out
+    periods = [row[0].value for row in load_workbook(excel)["Par période"].iter_rows(min_row=2)]
+    assert periods == ["2026-10-18 09h", "2026-10-18 12h"]
+
+
+def test_hours_are_checked():
+    with pytest.raises(SystemExit):
+        statistiques.parse_args(["--fiches", "x.json", "--heure-debut", "24"])
+    with pytest.raises(SystemExit):
+        statistiques.parse_args(["--fiches", "x.json", "--debut", "2026-10-18", "--fin", "2026-10-18",
+                                 "--heure-debut", "14", "--heure-fin", "9"])

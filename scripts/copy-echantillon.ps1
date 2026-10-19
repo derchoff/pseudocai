@@ -11,7 +11,10 @@
      - 9185575 - 9296581.eml » -> « acte de deces + facture ») ET par type de fichier, puis tire au hasard :
      chaque groupe reçoit d'abord -MinimumParGroupe fichiers (ou tous s'il en a moins), le reste est réparti
      en proportion de la taille des groupes, pour atteindre exactement -Total fichiers.
-  4. Écrit l'échantillon (echantillon.txt pour AzCopy, echantillon.csv pour la traçabilité), affiche la
+  4. Ajoute à la copie le JSON de métadonnées de chaque document tiré (<nom du document>.json, ex.
+     « facture.pdf.json »), s'il existe dans la source. Les JSON ne comptent pas dans -Total ni dans
+     les groupes : ce sont les documents qui sont tirés ; -NoMetadata les laisse de côté.
+  5. Écrit l'échantillon (echantillon.txt pour AzCopy, echantillon.csv pour la traçabilité), affiche la
      répartition, demande confirmation, puis copie avec azcopy copy --list-of-files (copie côté serveur,
      arborescence conservée sous la destination).
 
@@ -59,6 +62,8 @@
   Passe --dry-run à AzCopy : affiche ce qui serait copié, sans rien copier.
 .PARAMETER SampleOnly
   S'arrête après l'écriture de l'échantillon (aucun appel à azcopy copy).
+.PARAMETER NoMetadata
+  Ne copie pas les JSON de métadonnées (<nom du document>.json) des documents tirés.
 .PARAMETER NoOverwrite
   Ne recopie pas un fichier déjà présent dans la destination (--overwrite=false) : relancer le même
   tirage ne déclenche pas un second traitement des fichiers déjà copiés.
@@ -98,6 +103,7 @@ param(
     [switch]$NoEstimate,
     [switch]$DryRun,
     [switch]$SampleOnly,
+    [switch]$NoMetadata,
     [switch]$NoOverwrite,
     [switch]$Force
 )
@@ -258,6 +264,11 @@ if ($ListFile) {
     Write-Host "$($all.Count) fichier(s) listé(s) ; liste enregistrée dans $OutDir\source.txt (réutilisable avec -ListFile)."
 }
 
+# Index de tous les fichiers listés (casse ignorée), pour retrouver le JSON de métadonnées d'un
+# document : « Acte de deces - 9133996 - 9244997.eml » -> « Acte de deces - 9133996 - 9244997.eml.json ».
+$listed = New-Object "System.Collections.Generic.Dictionary[string,string]" ([System.StringComparer]::OrdinalIgnoreCase)
+foreach ($path in $all) { if (-not $listed.ContainsKey($path)) { $listed[$path] = $path } }
+
 # ------------------------------------------------------------------ 2. filtres et groupes
 # HashSet et dictionnaire : Select-Object -Unique et Group-Object deviennent très lents sous Windows
 # PowerShell 5.1 sur des centaines de milliers de fichiers.
@@ -341,9 +352,21 @@ foreach ($g in $groups) {
 Write-Progress -Id 3 -Activity "Tirage de l'échantillon" -Completed
 $sample = $sample.ToArray()
 
+# d. JSON de métadonnées des documents tirés (hors total) : copiés avec leur document.
+$metadata = New-Object System.Collections.Generic.List[string]
+foreach ($f in $sample) {
+    $json = $null
+    if (-not $NoMetadata -and $listed.ContainsKey("$($f.Chemin).json")) {
+        $json = $listed["$($f.Chemin).json"]
+        $metadata.Add($json)
+    }
+    $f | Add-Member -NotePropertyName Metadonnees -NotePropertyValue $json -Force
+}
+
 # ------------------------------------------------------------------ 4. échantillon et copie
 $listPath = Join-Path $OutDir "echantillon.txt"
-[System.IO.File]::WriteAllLines($listPath, [string[]]($sample | ForEach-Object { $_.Chemin }))  # UTF-8 sans BOM
+$toCopy = [string[]](@($sample | ForEach-Object { $_.Chemin }) + @($metadata))
+[System.IO.File]::WriteAllLines($listPath, $toCopy)  # UTF-8 sans BOM
 $sample | Export-Csv -Path (Join-Path $OutDir "echantillon.csv") -NoTypeInformation -Encoding UTF8
 $groups | Select-Object TypeDocument, Type, Disponibles, Retenus |
     Export-Csv -Path (Join-Path $OutDir "repartition.csv") -NoTypeInformation -Encoding UTF8
@@ -355,7 +378,12 @@ Write-Host "Répartition par type de document :"
 $sample | Group-Object TypeDocument | Sort-Object Count -Descending | Select-Object -First 25 |
     ForEach-Object { Write-Host ("  {0,7}  {1}" -f $_.Count, $_.Name) }
 Write-Host "Groupes (type de document x type de fichier) : $($groups.Count) ; détail dans repartition.csv"
-Write-Host "Échantillon : $($sample.Count) fichier(s), graine $Seed (refaire le même tirage : -Seed $Seed)."
+Write-Host "Échantillon : $($sample.Count) document(s), graine $Seed (refaire le même tirage : -Seed $Seed)."
+if ($NoMetadata) {
+    Write-Host "JSON de métadonnées : non copiés (-NoMetadata)."
+} else {
+    Write-Host "JSON de métadonnées : $($metadata.Count) document(s) en ont un, $($sample.Count - $metadata.Count) sans ; $($toCopy.Count) fichier(s) à copier au total."
+}
 Write-Host "Fichiers : $listPath, echantillon.csv, repartition.csv"
 
 if ($SampleOnly) { exit 0 }
@@ -363,7 +391,7 @@ if ($SampleOnly) { exit 0 }
 if (-not $Force -and -not $DryRun) {
     Write-Host ""
     Write-Host "Chaque fichier copié dans la destination déclenche un traitement complet (OCR, agents IA)." -ForegroundColor Yellow
-    $answer = Read-Host "Copier $($sample.Count) fichier(s) vers $Destination ? (oui/non)"
+    $answer = Read-Host "Copier $($sample.Count) document(s) et $($metadata.Count) JSON de métadonnées vers $Destination ? (oui/non)"
     if ($answer -ne "oui") { Write-Host "Abandon."; exit 1 }
 }
 

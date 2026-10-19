@@ -39,7 +39,8 @@ flowchart LR
     G --> M[Minimum par groupe<br/>-MinimumParGroupe]
     M --> P[Reste réparti<br/>en proportion]
     P --> T[Tirage au hasard<br/>dans chaque groupe]
-    T --> C[azcopy copy<br/>--list-of-files]
+    T --> J[+ JSON de métadonnées<br/>de chaque document tiré]
+    J --> C[azcopy copy<br/>--list-of-files]
 ```
 
 1. **Liste** : tous les fichiers du dossier source et de ses sous-dossiers (`azcopy list`), ou une
@@ -52,8 +53,9 @@ flowchart LR
    | `image` | `.jpg` `.jpeg` `.png` `.heic` `.heif` `.tif` `.tiff` `.webp` `.bmp` |
    | `pdf` | `.pdf` |
 
-   Tout le reste est écarté : en particulier les fichiers `.json` posés à côté des documents
-   (`….pdf.json`), et les noms qui correspondent à `-Exclude`.
+   Tout le reste est écarté du tirage, ainsi que les noms qui correspondent à `-Exclude`. Les
+   fichiers `.json` posés à côté des documents (`….pdf.json`) ne sont jamais tirés eux-mêmes : ils
+   suivent leur document (étape 6).
 3. **Groupes** : chaque fichier est rangé selon son **type de document**, c'est-à-dire le début du
    nom **jusqu'au premier « - »**, et son **type de fichier**.
 
@@ -70,6 +72,12 @@ flowchart LR
    pour le minimum, celui-ci est réduit automatiquement.
 5. **Tirage** : les fichiers sont tirés **au hasard** dans chaque groupe. La graine (`-Seed`) est
    affichée : la même graine redonne exactement le même échantillon.
+6. **JSON de métadonnées** : pour chaque document tiré, son JSON de métadonnées de la GED,
+   `<nom du document>.json` (par exemple `Acte de deces - 9133996 - 9244997.eml.json`), est ajouté à
+   la copie s'il existe dans la source (casse ignorée : `….JPG` trouve `….jpg.json`). Les JSON ne
+   comptent **pas** dans `-Total` : `-Total 10000` copie 10 000 documents, plus leurs JSON. Un
+   document sans JSON est copié seul ; un JSON sans document n'est jamais copié. Le service traite
+   le document et son JSON quel que soit leur ordre d'arrivée. `-NoMetadata` désactive cette étape.
 
 **Exemple chiffré** : 26 000 fichiers retenus, dont 10 000 « facture, pdf » et 40 « relevé, image »,
 pour un total de 10 000 et un minimum de 5. Chaque groupe reçoit d'abord 5 fichiers ; « facture,
@@ -97,6 +105,7 @@ en reçoit une quinzaine. Pour équilibrer davantage, augmentez `-MinimumParGrou
 | `-NoEstimate` | — | N'essaie pas d'estimer le nombre de fichiers avant la liste. |
 | `-SampleOnly` | — | S'arrête après le tirage : rien n'est copié. |
 | `-DryRun` | — | AzCopy simule la copie (`--dry-run`) : rien n'est copié. |
+| `-NoMetadata` | — | Ne copie pas les JSON de métadonnées (`<nom du document>.json`) des documents tirés. |
 | `-NoOverwrite` | — | Ne recopie pas un fichier déjà présent dans la destination : relancer le même tirage ne retraite pas les fichiers déjà copiés. |
 | `-Force` | — | Pas de demande de confirmation avant la copie. |
 
@@ -218,8 +227,8 @@ Dans `-OutDir` (`.\echantillon` par défaut) :
 | Fichier | Contenu |
 |---|---|
 | `source.txt` | Tous les fichiers listés dans la source (un chemin par ligne), réutilisable avec `-ListFile`. Absent si `-ListFile` est utilisé. |
-| `echantillon.txt` | Les fichiers tirés, au format attendu par `azcopy copy --list-of-files` (UTF-8 sans BOM). |
-| `echantillon.csv` | Chaque fichier tiré, avec son type de document et son type de fichier. |
+| `echantillon.txt` | Les fichiers à copier : documents tirés, puis leurs JSON de métadonnées, au format attendu par `azcopy copy --list-of-files` (UTF-8 sans BOM). |
+| `echantillon.csv` | Chaque document tiré, avec son type de document, son type de fichier et le chemin de son JSON de métadonnées (colonne `Metadonnees`, vide s'il n'en a pas). |
 | `repartition.csv` | Pour chaque groupe : type de document, type de fichier, nombre de fichiers disponibles et retenus. |
 
 Ces fichiers contiennent des **noms de fichiers**, qui peuvent comporter des données personnelles :

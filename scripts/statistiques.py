@@ -13,6 +13,8 @@ par jour, mois ou année (--par) :
 - répartition par type : PDF hors mail, image hors mail (par type MIME), mail, PDF dans un mail,
   image dans un mail, autre pièce d'un mail, fichier refusé au routage, JSON de métadonnées ;
 - tours de vérification (1, 2, 3… tours ; résidus après le dernier tour) ;
+- délai de bout en bout : de la dépose dans incoming/ à la fin du traitement (publication ou
+  quarantaine), attente dans les files et nouveaux essais compris ;
 - pages réellement passées par l'OCR et par les agents IA ;
 - consommation (appels et jetons des agents IA, enregistrements Azure AI Language)
   et, avec les prix (--prix-*), coût estimé et coût par page.
@@ -30,7 +32,7 @@ import json
 import statistics as stats
 import sys
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 CATEGORIES = {
@@ -73,9 +75,16 @@ def load_from_cosmos(endpoint: str, database: str, container: str, start: str, e
 
 
 def load_from_file(path: Path, start: str, end: str) -> list[dict]:
-    """Fiches d'un export JSON (liste de fiches), filtrées sur la période."""
+    """Fiches d'un export JSON (liste de fiches), filtrées sur les jours de la période."""
     rows = json.loads(path.read_text(encoding="utf-8-sig"))
     return [r for r in rows if start <= r.get("jour", "") <= end]
+
+
+def in_hours(rows: list[dict], start: str, start_hour: int, end: str, end_hour: int) -> list[dict]:
+    """Fiches déposées entre start à start_hour h et end à end_hour h (heures comprises, heure de
+    dépose de la fiche : heure de Paris). Les fiches sont lues par jour, puis filtrées ici."""
+    first, last = (start, start_hour), (end, end_hour)
+    return [r for r in rows if first <= (r.get("jour", ""), int(r.get("hour") or 0)) <= last]
 
 
 # ------------------------------------------------------------------------- calculs
@@ -117,13 +126,36 @@ def cost(u: dict, prices: dict) -> float | None:
 
 
 def period_of(row: dict, by: str) -> str:
-    """Clé de période d'une fiche : AAAA-MM-JJ, AAAA-MM ou AAAA."""
+    """Clé de période d'une fiche : AAAA-MM-JJ HHh, AAAA-MM-JJ, AAAA-MM ou AAAA."""
+    if by == "heure":
+        hour = row.get("hour", row.get("heure"))  # fiche (hour) ou ligne de document (heure)
+        return f"{row['jour']} {int(hour or 0):02d}h"
     return {"jour": row["jour"], "mois": row["jour"][:7], "annee": row["jour"][:4]}[by]
 
 
 def _pct(part: int, whole: int) -> float | None:
     """Pourcentage arrondi, ou None si la base est nulle."""
     return round(100 * part / whole, 1) if whole else None
+
+
+def delay(row: dict) -> float | None:
+    """Délai de bout en bout d'une fiche, en secondes : de la dépose dans incoming/ (deposeLe) à la
+    fin de son traitement (traiteLe). None si une date manque ou est illisible."""
+    try:
+        seconds = (datetime.fromisoformat(row["traiteLe"]) - datetime.fromisoformat(row["deposeLe"])).total_seconds()
+    except (KeyError, TypeError, ValueError):
+        return None
+    return max(0.0, round(seconds, 1))
+
+
+def delay_summary(values: list[float]) -> dict:
+    """Moyenne, médiane, 95e centile (délai que 95 % des documents ne dépassent pas) et maximum."""
+    values = sorted(v for v in values if v is not None)
+    if not values:
+        return {"moyenne": None, "mediane": None, "p95": None, "maximum": None}
+    p95 = values[0] if len(values) == 1 else stats.quantiles(values, n=20, method="inclusive")[18]
+    return {"moyenne": round(stats.mean(values), 1), "mediane": round(stats.median(values), 1),
+            "p95": round(p95, 1), "maximum": values[-1]}
 
 
 def _add(total: dict, u: dict) -> None:
@@ -133,7 +165,8 @@ def _add(total: dict, u: dict) -> None:
 
 
 def documents(rows: list[dict], prices: dict) -> list[dict]:
-    """Une ligne par document déposé : ses pages et sa consommation, pièces de mail et JSON compris."""
+    """Une ligne par document déposé : ses pages, sa consommation (pièces de mail et JSON compris) et
+    son délai de bout en bout (celui de sa fiche : un mail est finalisé après ses pièces)."""
     children: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
         if r.get("niveau") == "piece" and r.get("mailJobId"):
@@ -156,6 +189,7 @@ def documents(rows: list[dict], prices: dict) -> list[dict]:
             "motifs": ", ".join(r.get("motifs") or []), "domain": r.get("domain"),
             "pages": int(r.get("pages", 0) or 0) + sum(int(p.get("pages", 0) or 0) for p in parts),
             "pieces": len(parts), "tours": r.get("toursVerification", 0), **total, "cout": cost(total, prices),
+            "delai": delay(r),
         })
     return sorted(out, key=lambda d: (d["jour"], d["heure"] or 0, d["documentId"]))
 
@@ -172,6 +206,7 @@ def compute(rows: list[dict], by: str, prices: dict) -> dict:
     parts = [r for r in rows if r.get("niveau") == "piece"]
     reprocessed = sum(1 for n in _count_by(docs, "documentId").values() if n > 1)
     total_cost = cost(total, prices)
+    delays = delay_summary([d["delai"] for d in finished])
     summary = [
         ("Fiches (traitements)", len(rows)),
         ("Documents déposés (un mail = 1)", len(docs)),
@@ -198,6 +233,10 @@ def compute(rows: list[dict], by: str, prices: dict) -> dict:
         ("Jetons de sortie (raisonnement compris)", total.get("sortie", 0)),
         ("dont jetons de raisonnement", total.get("raisonnement", 0)),
         ("Enregistrements Azure AI Language", total.get("language", 0)),
+        ("Délai de bout en bout, moyenne (s)", delays["moyenne"]),
+        ("Délai de bout en bout, médiane (s)", delays["mediane"]),
+        ("Délai de bout en bout, 95e centile (s)", delays["p95"]),
+        ("Délai de bout en bout, maximum (s)", delays["maximum"]),
         ("Coût estimé", _money(total_cost)),
         ("Coût par page traitée", _money(total_cost / pages if total_cost is not None and pages else None, 4)),
     ]
@@ -209,9 +248,10 @@ def compute(rows: list[dict], by: str, prices: dict) -> dict:
         "Agents IA": _agents(rows, prices),
         "Documents": (
             ["Jour", "Heure", "Document (empreinte)", "Catégorie", "Type MIME", "Statut", "Motifs", "Domaine",
-             "Pages", "Pièces", "Tours", "Pages OCR", "Pages IA", "Appels IA", "Jetons entrée", "Jetons sortie", "Coût"],
+             "Pages", "Pièces", "Tours", "Délai (s)", "Pages OCR", "Pages IA", "Appels IA", "Jetons entrée",
+             "Jetons sortie", "Coût"],
             [[d["jour"], d["heure"], d["documentId"], CATEGORIES.get(d["categorie"], d["categorie"]), d["mime"],
-              d["statut"], d["motifs"], d["domain"], d["pages"], d["pieces"], d["tours"], d.get("pages_ocr", 0),
+              d["statut"], d["motifs"], d["domain"], d["pages"], d["pieces"], d["tours"], d["delai"], d.get("pages_ocr", 0),
               d.get("pages_ia", 0), d.get("appels", 0), d.get("entree", 0), d.get("sortie", 0), _money(d["cout"], 4)] for d in docs],
         ),
     }
@@ -227,13 +267,17 @@ def _count_by(items: list[dict], key: str) -> dict:
 
 def _by_period(rows: list[dict], docs: list[dict], by: str, prices: dict) -> tuple[list, list]:
     """Documents, pages, quarantaine et consommation par période."""
-    groups: dict[str, dict] = defaultdict(lambda: {"docs": 0, "mails": 0, "fin": 0, "quar": 0, "pages": 0, "u": {}})
+    groups: dict[str, dict] = defaultdict(
+        lambda: {"docs": 0, "mails": 0, "fin": 0, "quar": 0, "pages": 0, "u": {}, "delais": []}
+    )
     for d in docs:
         g = groups[period_of(d, by)]
         g["docs"] += 1
         g["mails"] += d["categorie"] == "mail"
         g["fin"] += d["statut"] in ("ok", "quarantine")
         g["quar"] += d["statut"] == "quarantine"
+        if d["statut"] in ("ok", "quarantine"):
+            g["delais"].append(d["delai"])
     for r in rows:
         g = groups[period_of(r, by)]
         g["pages"] += int(r.get("pages", 0) or 0)
@@ -242,10 +286,12 @@ def _by_period(rows: list[dict], docs: list[dict], by: str, prices: dict) -> tup
     for key in sorted(groups):
         g = groups[key]
         c = cost(g["u"], prices) if g["u"] else None
-        out.append([key, g["docs"], g["mails"], g["quar"], _pct(g["quar"], g["fin"]), g["pages"],
+        delays = delay_summary(g["delais"])
+        out.append([key, g["docs"], g["mails"], g["quar"], _pct(g["quar"], g["fin"]), delays["moyenne"], delays["p95"], g["pages"],
                     g["u"].get("pages_ocr", 0), g["u"].get("pages_ia", 0), g["u"].get("entree", 0), g["u"].get("sortie", 0),
                     _money(c), _money(c / g["pages"] if c is not None and g["pages"] else None, 4)])
-    headers = ["Période", "Documents", "dont mails", "En quarantaine", "% quarantaine", "Pages", "Pages OCR",
+    headers = ["Période", "Documents", "dont mails", "En quarantaine", "% quarantaine", "Délai moyen (s)",
+               "Délai 95e centile (s)", "Pages", "Pages OCR",
                "Pages IA", "Jetons entrée", "Jetons sortie", "Coût", "Coût / page"]
     return headers, out
 
@@ -254,8 +300,11 @@ def _by_type(rows: list[dict], prices: dict) -> tuple[list, list]:
     """Par catégorie et type MIME : nombre, statuts, pages, consommation."""
     groups: dict[tuple, dict] = defaultdict(lambda: defaultdict(int))
     usages: dict[tuple, dict] = defaultdict(dict)
+    delays: dict[tuple, list] = defaultdict(list)
     for r in rows:
         key = (r["categorie"], r.get("mime") or "")
+        if r.get("niveau") != "piece" and r["statut"] in ("ok", "quarantine"):
+            delays[key].append(delay(r))
         g = groups[key]
         g["n"] += 1
         g[r["statut"]] += 1
@@ -264,12 +313,15 @@ def _by_type(rows: list[dict], prices: dict) -> tuple[list, list]:
     out = []
     for key in sorted(groups, key=lambda k: (CATEGORY_ORDER.index(k[0]) if k[0] in CATEGORY_ORDER else 99, k[1])):
         g, u = groups[key], usages[key]
+        d = delay_summary(delays[key])
         out.append([CATEGORIES.get(key[0], key[0]), key[1], g["n"], g["ok"], g["quarantine"], g["refusee"],
-                    g["retiree"], g["non_traitee"], _pct(g["quarantine"], g["ok"] + g["quarantine"]), g["pages"],
+                    g["retiree"], g["non_traitee"], _pct(g["quarantine"], g["ok"] + g["quarantine"]),
+                    d["moyenne"], d["p95"], g["pages"],
                     u.get("pages_ocr", 0), u.get("pages_ia", 0), u.get("entree", 0) + u.get("sortie", 0),
                     _money(cost(u, prices))])
     headers = ["Catégorie", "Type MIME", "Nombre", "Publiés", "Quarantaine", "Refusées", "Retirées", "Non traitées",
-               "% quarantaine", "Pages", "Pages OCR", "Pages IA", "Jetons", "Coût"]
+               "% quarantaine", "Délai moyen (s)", "Délai 95e centile (s)", "Pages", "Pages OCR", "Pages IA",
+               "Jetons", "Coût"]
     return headers, out
 
 
@@ -390,7 +442,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--container", default="statistiques", help="container des fiches (défaut : statistiques)")
     p.add_argument("--debut", default=today.replace(day=1).isoformat(), help="premier jour de dépose, AAAA-MM-JJ (défaut : 1er du mois)")
     p.add_argument("--fin", default=today.isoformat(), help="dernier jour de dépose, AAAA-MM-JJ (défaut : aujourd'hui)")
-    p.add_argument("--par", choices=("jour", "mois", "annee"), default="jour", help="regroupement des tableaux par période")
+    p.add_argument("--heure-debut", type=int, default=0, metavar="HH",
+                   help="première heure de dépose du jour --debut, 0 à 23, heure de Paris (défaut : 0)")
+    p.add_argument("--heure-fin", type=int, default=23, metavar="HH",
+                   help="dernière heure de dépose du jour --fin, 0 à 23, comprise (défaut : 23)")
+    p.add_argument("--par", choices=("heure", "jour", "mois", "annee"), default="jour",
+                   help="regroupement des tableaux par période")
     p.add_argument("--excel", type=Path, help="classeur produit (défaut : statistiques_<debut>_<fin>.xlsx)")
     p.add_argument("--sans-excel", action="store_true", help="affichage à l'écran seulement")
     p.add_argument("--prix-ocr", type=float, default=0.0, help="prix de 1 000 pages Document Intelligence")
@@ -400,7 +457,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = p.parse_args(argv)
     for value in (args.debut, args.fin):
         date.fromisoformat(value)  # lève ValueError si la date est mal écrite
+    for name in ("heure_debut", "heure_fin"):
+        if not 0 <= getattr(args, name) <= 23:
+            p.error(f"--{name.replace('_', '-')} : heure de 0 à 23 attendue")
+    if (args.debut, args.heure_debut) > (args.fin, args.heure_fin):
+        p.error("le début de la période est après sa fin")
     return args
+
+
+def period_label(args: argparse.Namespace) -> tuple[str, str]:
+    """Libellés du début et de la fin de la période, avec l'heure si elle est précisée."""
+    hours = args.heure_debut != 0 or args.heure_fin != 23
+    if not hours:
+        return args.debut, args.fin
+    return f"{args.debut} {args.heure_debut:02d}h", f"{args.fin} {args.heure_fin:02d}h"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -413,16 +483,19 @@ def main(argv: list[str] | None = None) -> int:
     else:
         origin = cosmos_endpoint(args.cosmos)
         rows = load_from_cosmos(origin, args.base, args.container, args.debut, args.fin)
+    rows = in_hours(rows, args.debut, args.heure_debut, args.fin, args.heure_fin)
+    first, last = period_label(args)
     tables = compute(rows, args.par, prices)
-    context = [("Source", origin), ("Période de dépose", f"{args.debut} → {args.fin}"), ("Regroupement", args.par),
+    context = [("Source", origin), ("Période de dépose", f"{first} → {last} (heure de Paris)"), ("Regroupement", args.par),
                ("Prix", ", ".join(f"{k} = {v}" for k, v in prices.items()) if any(prices.values()) else "non renseignés")]
-    print(f"Statistiques — dépôts du {args.debut} au {args.fin} ({len(rows)} fiche(s), source : {origin})")
+    print(f"Statistiques — dépôts du {first} au {last} ({len(rows)} fiche(s), source : {origin})")
     for name, (headers, table_rows) in tables.items():
         if name == "Documents":
             continue  # une ligne par document : Excel seulement
         print_table(name, headers, table_rows, limit=40)
     if not args.sans_excel:
-        path = args.excel or Path(f"statistiques_{args.debut}_{args.fin}.xlsx")
+        name = f"statistiques_{first}_{last}".replace(" ", "_")
+        path = args.excel or Path(f"{name}.xlsx")
         write_excel(path, tables, context)
         print(f"\nClasseur Excel : {path}")
     return 0
