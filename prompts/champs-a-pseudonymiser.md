@@ -209,6 +209,10 @@ ni comme partie d'une valeur.
   objet, référence, reference, total, montant, patient, patiente, assuré, assure, adhérent,
   adherent, bénéficiaire, beneficiaire, praticien, signature, cachet
 - **Comptes et services** : Administrateur, Gestion
+- **Libellés de formulaire** : Nom, Noms, Prénom, Prénoms, Prenom, Prenoms
+
+Un libellé de formulaire n'est jamais la valeur : `Prénom : CHLOÉ` → seul `CHLOÉ` est un PRENOM ;
+`Prénom` seul (case vide d'un acte de naissance, `ENFANT : Prénom`) n'est rien à signaler.
 
 ## Champs JSON à ne jamais modifier
 

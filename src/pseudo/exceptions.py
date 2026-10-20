@@ -60,9 +60,16 @@ class Exceptions:
         """Bornes [début, fin[ de text sans ses mots protégés de tête et de queue ; None s'il n'en
         reste rien (« Dr DUPONT » → bornes de « DUPONT » ; « DEVIS » → None)."""
         tokens = [(m.start(), m.end()) for m in re.finditer(r"\S+", text)]
-        while tokens and self.is_protected_word(text[tokens[0][0]:tokens[0][1]]):
+
+        def removable(token: tuple[int, int]) -> bool:
+            # Mot protégé, éventuellement suivi de son deux-points (« Nom: »), ou ponctuation seule
+            # restée en bord de zone après un libellé (« Prénom : CHLOÉ » → « CHLOÉ »).
+            word = text[token[0]:token[1]]
+            return not any(c.isalnum() for c in word) or self.is_protected_word(word.rstrip(":;"))
+
+        while tokens and removable(tokens[0]):
             tokens.pop(0)
-        while tokens and self.is_protected_word(text[tokens[-1][0]:tokens[-1][1]]):
+        while tokens and removable(tokens[-1]):
             tokens.pop()
         if not tokens:
             return None

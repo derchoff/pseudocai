@@ -96,3 +96,36 @@ def test_trim_and_drop_rules():
     assert exc.trim_words("DUPONT Docteur") == (0, 6)
     assert exc.trim_words("DEVIS") is None and exc.trim_words("Dr.") is None
     assert exc.trim_words("Jean DEVISSE") == (0, 12)  # un mot qui contient « devis » n'est pas touché
+
+
+def test_referential_lists_the_form_labels():
+    words = {w.lower() for w in CATALOG.exceptions.words}
+    assert {"nom", "noms", "prénom", "prénoms", "prenom", "prenoms"} <= words
+
+
+def test_form_label_prenom_is_never_replaced_even_when_detected_and_propagated(settings):
+    # Acte de naissance : l'agent prend le libellé « Prénom » (case vide) pour un prénom ; la
+    # propagation l'étendait à tous les « Prénom » du document, remplacés par le même prénom fictif.
+    document = pdf("ENFANT : Prénom", "Prénom : CHLOÉ", "Nom : MARTIN", "PERE : Prénom Jean")
+    detector = FakeDetector({"Prénom": "PRENOM", "CHLOÉ": "PRENOM", "MARTIN": "NOM", "Jean": "PRENOM"})
+    result = run(settings, document, detector)
+    published = output_text(result.output)
+    assert published.count("Prénom") == 3 and "Nom :" in published
+    assert "CHLOÉ" not in published and "MARTIN" not in published and "Jean" not in published
+
+
+def test_form_label_is_trimmed_with_its_colon_when_a_detector_includes_it(settings):
+    document = pdf("Prénom : CHLOÉ", "Nom: DUPONT", "Bulletin d'adhésion signé le 3 mars.")
+    language = SpanLanguage({"Prénom : CHLOÉ": "PERSONNE", "Nom: DUPONT": "PERSONNE"})
+    result = run(settings, document, FakeDetector({}), language=language)
+    published = output_text(result.output)
+    assert "Prénom :" in published and "Nom:" in published  # libellés et deux-points conservés
+    assert "CHLOÉ" not in published and "DUPONT" not in published
+
+
+def test_trim_words_skips_the_label_and_its_punctuation():
+    exceptions = CATALOG.exceptions
+    assert exceptions.trim_words("Prénom") is None
+    assert exceptions.trim_words("Prénom : CHLOÉ") == (9, 14)
+    assert exceptions.trim_words("Nom: DUPONT") == (5, 11)
+    assert exceptions.trim_words("Dr DUPONT") == (3, 9)
