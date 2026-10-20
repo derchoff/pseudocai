@@ -370,6 +370,14 @@ puis regarde si le document est terminé ; le document écrit sa trace puis rega
 dans `work/`. Au moins l'un des deux voit l'autre ; une double copie est sans danger (même nom,
 même contenu).
 
+**Document redéposé** : « terminé » veut dire terminé **pour le dépôt actuel**. La trace porte la
+date de dépose qu'elle décrit (`depositedAt`) ; si le document a été redéposé depuis dans
+`incoming/` (date de dernière écriture plus récente), sa trace est périmée : le JSON attend, et le
+document le rattachera à la fin de son nouveau traitement. Sans cette règle, un JSON redéposé avec
+son document se copiait dans l'**ancien** dossier du document. Par sécurité, un document relit aussi
+sa trace précédente juste avant de supprimer ses anciennes sorties : une copie ajoutée pendant son
+traitement part avec elles.
+
 | Situation | Où va le JSON |
 |---|---|
 | Document publié, JSON pseudonymisé | À côté du document (`<date>/domain=<type>/<chemin>/facture.pdf.json`), ou dans le dossier du mail (`<nom du .eml>.json`). |

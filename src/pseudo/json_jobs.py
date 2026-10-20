@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import logging
 import posixpath
+from datetime import datetime, timedelta, timezone
 
 from .classification import Classification, TypeScore
 from .jobs import ORIGIN_JSON, Job
@@ -43,6 +44,8 @@ from .statistics import record_statistics
 log = logging.getLogger(__name__)
 
 WORK_PREFIX = "json-metadata/"
+# Marge sur la comparaison des dates de dépose (arrondis d'horloge entre le blob et la trace).
+REDEPOSIT_TOLERANCE = timedelta(seconds=1)
 JSON_SUFFIX = ".json"
 
 
@@ -101,6 +104,11 @@ def attach_json_metadata(ctx: StorageContext, document_id: str, source_container
         return None
     if not trace or trace.get("status") not in ("ok", "quarantine"):
         return None
+    if _redeposited_since(ctx, trace, source_container, document_name):
+        # La trace décrit un traitement ANTÉRIEUR : le document a été redéposé et son nouveau
+        # traitement n'est pas fini. Le JSON attend ; le document le rattachera à sa fin.
+        log.info("Document redéposé depuis sa dernière trace doc=%s : JSON de métadonnées en attente", document_id)
+        return None
     where = _destination(trace, document_name)
     if where is None:
         log.warning("Dossier du document introuvable dans sa trace doc=%s : JSON en attente", document_id)
@@ -136,6 +144,31 @@ def attach_json_metadata(ctx: StorageContext, document_id: str, source_container
         ctx.mapping_store.save_trace({**trace, "sorties": sorties + [w for w in written if w not in sorties]})
     log.info("JSON de métadonnées rattaché doc=%s statut=%s", document_id, status)
     return status
+
+
+def _redeposited_since(ctx: StorageContext, trace: dict, source_container: str, document_name: str) -> bool:
+    """Vrai si le document a été redéposé dans incoming/ après le dépôt décrit par sa trace.
+
+    Compare la date de dépose actuelle du document (dernière écriture du blob) à celle de la trace
+    (depositedAt ; pour une trace d'une version précédente, sans cette date : processedAt). Un
+    document absent d'incoming/ (supprimé après succès) ne l'a pas été : sa trace fait foi.
+    """
+    blob = source_blob(ctx, source_container, document_name)
+    if not blob.exists():
+        return False
+    deposited = getattr(blob.get_blob_properties(), "last_modified", None)
+    reference = trace.get("depositedAt") or trace.get("processedAt")
+    if deposited is None or not reference:
+        return False
+    try:
+        reference_time = datetime.fromisoformat(reference)
+    except ValueError:
+        return False
+    if deposited.tzinfo is None:
+        deposited = deposited.replace(tzinfo=timezone.utc)
+    if reference_time.tzinfo is None:
+        reference_time = reference_time.replace(tzinfo=timezone.utc)
+    return deposited > reference_time + REDEPOSIT_TOLERANCE
 
 
 def _destination(trace: dict, document_name: str) -> tuple[str, str] | None:

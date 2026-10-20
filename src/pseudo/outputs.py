@@ -259,6 +259,11 @@ def _finish(
 
     Supprime aussi la source si DELETE_SOURCE_AFTER_SUCCESS est activé.
     """
+    # Trace précédente relue maintenant : pendant le traitement (lu au début), un JSON de métadonnées
+    # a pu y ajouter sa copie ; elle doit partir avec les autres sorties devenues obsolètes.
+    latest = previous_trace(ctx, job)
+    if latest is not None and latest.get("jobId") != job.job_id:
+        previous = latest
     _remove_previous_outputs(ctx, previous, outputs)
     ctx.mapping_store.save_trace(
         {
@@ -271,6 +276,9 @@ def _finish(
             "stage": stage,
             "status": status,
             "processedAt": _now(),
+            # Dépôt traité : permet au JSON de métadonnées de reconnaître une trace périmée (le
+            # document a été redéposé depuis, et son nouveau traitement n'est pas fini).
+            "depositedAt": job.deposited_at or job.received_at,
             "classification": classification.to_dict(),
             "preparation": job.prepared.preparation if job.prepared else None,
             "sorties": outputs,

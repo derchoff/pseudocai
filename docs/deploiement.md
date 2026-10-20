@@ -457,3 +457,10 @@ données et sa règle de purge, puis recrée la rubrique Event Grid sur le nouve
 | Nouvelle variable `statistics_reader_principal_ids` | Object IDs Entra autorisés à lire le container `statistiques` (et lui seul) avec `scripts/statistiques.py`. Voir [statistiques](statistiques.md). |
 | Nouvelle sortie Terraform `cosmos_account_name` | Nom du compte à passer à `scripts/statistiques.py --cosmos`. |
 
+## Correctif : JSON de métadonnées rattaché à l'ancien dossier d'un document redéposé
+
+| Changement | Action |
+|---|---|
+| Un JSON redéposé avec son document, et traité avant la fin du nouveau traitement du document, se copiait dans l'**ancien** dossier du document (par exemple `quarantine/non-classe/mail-…/` d'une version précédente). Il attend désormais la fin du traitement en cours. | Redéployer le code (`deploy.ps1`). Les copies déjà égarées restent : ce sont des dossiers de l'ancienne arborescence (hors `year=…`) qui ne contiennent **qu'un** fichier `….json`. Après vérification que le document et son JSON sont bien dans la nouvelle arborescence, les supprimer à la main. |
+| Les traces ont un nouveau champ `depositedAt` (date de dépose traitée). | Rien à faire : pour les traces plus anciennes, la date de traitement sert de référence. |
+

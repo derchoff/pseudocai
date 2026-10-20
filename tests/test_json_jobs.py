@@ -200,3 +200,59 @@ def test_no_attachment_when_json_metadata_are_disabled(settings, monkeypatch):
     rt.settings = Settings.from_env()
     assert run_chain(rt, DOC)[0] == "ok"
     assert f"{D}/domain=dentaire/{JSON_NAME}" not in rt.blob_service.names("pseudonymised")  # désactivé : rien de copié
+
+
+def test_json_redeposited_with_its_document_waits_for_the_new_processing(settings):
+    """Document traité autrefois, puis redéposé avec son JSON : si le JSON est traité avant la fin du
+    nouveau traitement du document, il ne doit pas se rattacher à l'ANCIEN dossier (trace périmée)."""
+    from datetime import datetime, timezone
+
+    rt = runtime(settings)
+    assert run_chain(rt, DOC)[0] == "ok"  # premier dépôt : dossier du 14 mars (D)
+    old = set(rt.blob_service.names("pseudonymised"))
+    # Le document et son JSON sont redéposés le 19 octobre à 21 h (heure de Paris).
+    later = datetime(2026, 10, 19, 19, 0, tzinfo=timezone.utc)
+    rt.blob_service.put("incoming", DOC, make_text_pdf(), deposited=later)
+    rt.blob_service.put("incoming", JSON_NAME, json.dumps(GED).encode(), deposited=later)
+    # Le JSON passe AVANT le document : il doit attendre, pas se copier dans l'ancien dossier.
+    assert handle_text_job(route_event(event(JSON_NAME), rt).job.to_json(), rt) == "en_attente"
+    assert set(rt.blob_service.names("pseudonymised")) == old
+    # Le document termine : JSON rattaché dans le NOUVEAU dossier, ancien dossier vidé.
+    assert run_chain(rt, DOC)[0] == "ok"
+    names = rt.blob_service.names("pseudonymised")
+    assert f"year=2026/month=10/day=19/hour=21/domain=dentaire/{JSON_NAME}" in names
+    assert not any(n.startswith(D) for n in names)
+
+
+def test_json_alone_redeposited_still_joins_its_unchanged_document(settings):
+    """Seul le JSON est redéposé : le document n'a pas bougé, sa trace est à jour."""
+    rt = runtime(settings)
+    assert run_chain(rt, DOC)[0] == "ok"
+    rt.blob_service.blobs.pop(("pseudonymised", f"{D}/domain=dentaire/{JSON_NAME}"), None)
+    assert handle_text_job(route_event(event(JSON_NAME), rt).job.to_json(), rt) == "ok"
+    assert f"{D}/domain=dentaire/{JSON_NAME}" in rt.blob_service.names("pseudonymised")
+
+
+def test_copy_added_to_the_old_trace_during_processing_is_removed(settings):
+    """Une copie du JSON ajoutée à l'ANCIENNE trace pendant le retraitement du document (version
+    précédente du code) part avec les autres sorties obsolètes."""
+    from datetime import datetime, timezone
+
+    rt = runtime(settings)
+    assert run_chain(rt, DOC)[0] == "ok"
+    old_trace = rt.mapping_store.traces[-1]
+    stray = f"pseudonymised/{D}/domain=dentaire/ancienne-copie.json"
+    rt.blob_service.put("pseudonymised", stray.split("/", 1)[1], b"{}")
+    later = datetime(2026, 10, 19, 19, 0, tzinfo=timezone.utc)
+    rt.blob_service.put("incoming", DOC, make_text_pdf(), deposited=later)
+    route = route_event(event(DOC), rt)
+    detect = rt.services.detector.detect
+
+    def detect_while_json_attaches(lines):
+        """Pendant la détection : la copie est ajoutée aux sorties de l'ancienne trace."""
+        rt.mapping_store.traces[-1] = {**old_trace, "sorties": old_trace["sorties"] + [stray]}
+        return detect(lines)
+
+    rt.services.detector.detect = detect_while_json_attaches
+    assert handle_pdf_job(route.job.to_json(), rt) == "ok"
+    assert stray.split("/", 1)[1] not in rt.blob_service.names("pseudonymised")
